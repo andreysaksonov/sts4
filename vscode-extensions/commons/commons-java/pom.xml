@@ -13,8 +13,10 @@
 	</parent>
 	
 	<properties>
-		<!-- roatser version -->
-		<roaster.version>2.19.2.Final</roaster.version>
+		<antlr-version>4.5.3</antlr-version>
+		<java-parser-version>2.5.1</java-parser-version>
+		<remark-version>1.0.0</remark-version>
+		<jandex-version>2.0.3.Final</jandex-version>
 	</properties>
 	
 	
@@ -27,18 +29,25 @@
 		<dependency>
 			<groupId>org.jboss</groupId>
 			<artifactId>jandex</artifactId>
-			<version>2.0.3.Final</version>
+			<version>${jandex-version}</version>
 		</dependency>
 		<!-- HTML <-> Markdown conversion -->
 		<dependency>
 		    <groupId>com.kotcrab.remark</groupId>
 		    <artifactId>remark</artifactId>
-		    <version>1.0.0</version>
+		    <version>${remark-version}</version>
 		</dependency>
+		<!-- Java source parser -->
 		<dependency>
 			<groupId>com.github.javaparser</groupId>
 			<artifactId>javaparser-core</artifactId>
-			<version>2.5.1</version>
+			<version>${java-parser-version}</version>
+		</dependency>
+		<!-- ANTLR Parser Runtime -->
+		<dependency>
+			<groupId>org.antlr</groupId>
+			<artifactId>antlr4-runtime</artifactId>
+			<version>${antlr-version}</version>
 		</dependency>
 		<!-- Reactor -->
 		<dependency>
