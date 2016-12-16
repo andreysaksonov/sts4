@@ -37,9 +37,10 @@ import org.eclipse.lsp4j.TextDocumentItem;
 import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
-import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
+import org.springframework.ide.vscode.commons.languageserver.ProgressParams;
+import org.springframework.ide.vscode.commons.languageserver.STS4LanguageClient;
 
 public class LanguageServerHarness {
 
@@ -117,7 +118,7 @@ public class LanguageServerHarness {
 		initParams.setCapabilities(clientCap);
 		initResult = server.initialize(initParams).get();
 		if (server instanceof LanguageClientAware) {
-			((LanguageClientAware) server).connect(new LanguageClient() {
+			((LanguageClientAware) server).connect(new STS4LanguageClient() {
 				@Override
 				public void telemetryEvent(Object object) {
 					// TODO Auto-generated method stub
@@ -146,6 +147,12 @@ public class LanguageServerHarness {
 					// TODO Auto-generated method stub
 
 				}
+
+				@Override
+				public void progress(ProgressParams progressEvent) {
+					// TODO Auto-generated method stub
+
+				}
 			});
 
 		}
@@ -167,6 +174,42 @@ public class LanguageServerHarness {
 		return openDocument(getOrReadFile(file));
 	}
 
+	public synchronized TextDocumentInfo changeDocument(String uri, int start, int end, String replaceText) {
+		TextDocumentInfo oldDoc = documents.get(uri);
+		String oldContent = oldDoc.getText();
+		String newContent = oldContent.substring(0, start) + replaceText + oldContent.substring(end);
+		TextDocumentItem textDocument = setDocumentContent(uri, newContent);
+		DidChangeTextDocumentParams didChange = new DidChangeTextDocumentParams();
+		VersionedTextDocumentIdentifier version = new VersionedTextDocumentIdentifier();
+		version.setUri(uri);
+		version.setVersion(textDocument.getVersion());
+		didChange.setTextDocument(version);
+		switch (getDocumentSyncMode()) {
+		case None:
+			break; //nothing todo
+		case Incremental: {
+			TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent();
+			change.setRange(new Range(oldDoc.toPosition(start), oldDoc.toPosition(end)));
+			change.setRangeLength(end-start);
+			change.setText(replaceText);
+			didChange.setContentChanges(Collections.singletonList(change));
+			break;
+		}
+		case Full: {
+			TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent();
+			change.setText(newContent);
+			didChange.setContentChanges(Collections.singletonList(change));
+			break;
+		}
+		default:
+			throw new IllegalStateException("Unkown SYNC mode: "+getDocumentSyncMode());
+		}
+		if (server!=null) {
+			server.getTextDocumentService().didChange(didChange);
+		}
+		return documents.get(uri);
+	}
+
 	public TextDocumentInfo changeDocument(String uri, String newContent) throws Exception {
 		TextDocumentItem textDocument = setDocumentContent(uri, newContent);
 		DidChangeTextDocumentParams didChange = new DidChangeTextDocumentParams();
@@ -178,7 +221,6 @@ public class LanguageServerHarness {
 		case None:
 			break; //nothing todo
 		case Incremental:
-			throw new IllegalStateException("Incremental sync not yet supported by this test harness");
 		case Full:
 			TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent();
 			change.setText(newContent);
@@ -323,4 +365,5 @@ public class LanguageServerHarness {
 		CompletionItem completion = editor.getFirstCompletion();
 		assertEquals(expected, completion.getLabel());
 	}
+
 }

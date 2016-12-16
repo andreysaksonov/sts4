@@ -3,25 +3,28 @@ package org.springframework.ide.vscode.boot.properties.hover;
 import static org.springframework.ide.vscode.boot.common.CommonLanguageTools.SPACES;
 import static org.springframework.ide.vscode.boot.common.CommonLanguageTools.getValueHints;
 import static org.springframework.ide.vscode.boot.common.CommonLanguageTools.getValueType;
-import static org.springframework.ide.vscode.commons.util.Renderables.*;
+import static org.springframework.ide.vscode.commons.util.Renderables.bold;
+import static org.springframework.ide.vscode.commons.util.Renderables.concat;
+import static org.springframework.ide.vscode.commons.util.Renderables.paragraph;
+import static org.springframework.ide.vscode.commons.util.Renderables.text;
 
 import java.util.Collection;
 import java.util.Optional;
 
-import org.springframework.ide.vscode.application.properties.metadata.PropertyInfo;
-import org.springframework.ide.vscode.application.properties.metadata.SpringPropertyIndex;
-import org.springframework.ide.vscode.application.properties.metadata.hints.StsValueHint;
-import org.springframework.ide.vscode.application.properties.metadata.types.Type;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.EnumCaseMode;
-import org.springframework.ide.vscode.application.properties.metadata.util.FuzzyMap;
-import org.springframework.ide.vscode.boot.common.PropertyRenderableProvider;
+import org.springframework.ide.vscode.boot.common.InformationTemplates;
+import org.springframework.ide.vscode.boot.metadata.PropertyInfo;
+import org.springframework.ide.vscode.boot.metadata.SpringPropertyIndex;
+import org.springframework.ide.vscode.boot.metadata.hints.StsValueHint;
+import org.springframework.ide.vscode.boot.metadata.types.Type;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.EnumCaseMode;
+import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap;
 import org.springframework.ide.vscode.commons.java.IJavaProject;
-import org.springframework.ide.vscode.commons.languageserver.util.BadLocationException;
 import org.springframework.ide.vscode.commons.languageserver.util.DocumentRegion;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
-import org.springframework.ide.vscode.commons.languageserver.util.IRegion;
+import org.springframework.ide.vscode.commons.util.BadLocationException;
 import org.springframework.ide.vscode.commons.util.Renderable;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
+import org.springframework.ide.vscode.commons.util.text.IRegion;
 import org.springframework.ide.vscode.java.properties.antlr.parser.AntlrParser;
 import org.springframework.ide.vscode.java.properties.parser.ParseResults;
 import org.springframework.ide.vscode.java.properties.parser.PropertiesAst.Key;
@@ -79,7 +82,7 @@ class PropertiesHoverCalculator {
 		if (best == null) {
 			return null;
 		} else {
-			Renderable renderable = new PropertyRenderableProvider(project, best).getRenderable();
+			Renderable renderable = InformationTemplates.createHover(best);
 			DocumentRegion region = createRegion(doc, property);
 			return Tuples.of(renderable, region.asRegion());
 		}

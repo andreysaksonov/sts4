@@ -11,20 +11,28 @@
 package org.springframework.ide.vscode.commons.yaml.schema;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Set;
 
 import javax.inject.Provider;
 
+import org.springframework.ide.vscode.commons.util.Assert;
 import org.springframework.ide.vscode.commons.util.EnumValueParser;
 import org.springframework.ide.vscode.commons.util.Renderable;
 import org.springframework.ide.vscode.commons.util.Renderables;
 import org.springframework.ide.vscode.commons.util.ValueParser;
+
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableList.Builder;
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Static utility method for creating YType objects representing either
@@ -34,6 +42,10 @@ import org.springframework.ide.vscode.commons.util.ValueParser;
  * @author Kris De Volder
  */
 public class YTypeFactory {
+
+	public YType yany(String name) {
+		return new YAny(name);
+	}
 
 	public YType yseq(YType el) {
 		return new YSeqType(el);
@@ -47,6 +59,11 @@ public class YTypeFactory {
 		return new YBeanType(name, properties);
 	}
 
+	public YBeanUnionType yunion(String name, YBeanType... types) {
+		Assert.isLegal(types.length>1);
+		return new YBeanUnionType(name, types);
+	}
+	
 	/**
 	 * YTypeUtil instances capable of 'interpreting' the YType objects created by this
 	 * YTypeFactory
@@ -69,13 +86,13 @@ public class YTypeFactory {
 		}
 
 		@Override
-		public Map<String, YTypedProperty> getPropertiesMap(YType type) {
-			return ((AbstractType)type).getPropertiesMap();
+		public Map<String, YTypedProperty> getPropertiesMap(YType type, DynamicSchemaContext dc) {
+			return ((AbstractType)type).getPropertiesMap(dc);
 		}
 
 		@Override
-		public List<YTypedProperty> getProperties(YType type) {
-			return ((AbstractType)type).getProperties();
+		public List<YTypedProperty> getProperties(YType type, DynamicSchemaContext dc) {
+			return ((AbstractType)type).getProperties(dc);
 		}
 
 		@Override
@@ -107,6 +124,11 @@ public class YTypeFactory {
 		public ValueParser getValueParser(YType type) {
 			return ((AbstractType)type).getParser();
 		}
+
+		@Override
+		public YType inferMoreSpecificType(YType type, DynamicSchemaContext schemaContext) {
+			return ((AbstractType)type).inferMoreSpecificType(schemaContext);
+		}
 	};
 
 	/////////////////////////////////////////////////////////////////////////////////////
@@ -124,6 +146,10 @@ public class YTypeFactory {
 
 		public boolean isSequenceable() {
 			return false;
+		}
+
+		public YType inferMoreSpecificType(DynamicSchemaContext dc) {
+			return this;
 		}
 
 		public boolean isBean() {
@@ -164,11 +190,11 @@ public class YTypeFactory {
 			}
 		}
 
-		public final List<YTypedProperty> getProperties() {
+		public List<YTypedProperty> getProperties(DynamicSchemaContext dc) {
 			return Collections.unmodifiableList(propertyList);
 		}
 
-		public final Map<String, YTypedProperty> getPropertiesMap() {
+		public Map<String, YTypedProperty> getPropertiesMap(DynamicSchemaContext dc) {
 			if (cachedPropertyMap==null) {
 				cachedPropertyMap = new LinkedHashMap<>();
 				for (YTypedProperty p : propertyList) {
@@ -212,12 +238,55 @@ public class YTypeFactory {
 				}
 			}
 		}
+		
+		public void addHints(YValueHint... extraHints) {
+			for (YValueHint h : extraHints) {
+				if (!hints.contains(h)) {
+					hints.add(h);
+				}
+			}
+		}
+
 		public void parseWith(ValueParser parser) {
 			this.parser = parser;
 		}
 		public ValueParser getParser() {
 			return parser;
 		}
+
+	}
+	
+	/**
+	 * Represents a type that is completely unconstrained. Anything goes: A map, a sequence or some
+	 * atomic value.
+	 */
+	public static class YAny extends AbstractType {
+		private final String name;
+
+		public YAny(String name) {
+			this.name = name;
+		}
+
+		@Override
+		public boolean isAtomic() {
+			return true;
+		}
+
+		@Override
+		public boolean isSequenceable() {
+			return true;
+		}
+
+		@Override
+		public boolean isMap() {
+			return true;
+		}
+
+		@Override
+		public String toString() {
+			return name;
+		}
+
 	}
 
 	public static class YMapType extends AbstractType {
@@ -293,6 +362,26 @@ public class YTypeFactory {
 		public boolean isBean() {
 			return true;
 		}
+
+		/**
+		 * Deprecated. This method disregards {@link DynamicSchemaContext}. This may be
+		 * alright for Schemas which don't rely on it but it will result in incorrect/inaccurate
+		 * behavior for Schemas that do.
+		 */
+		@Deprecated
+		public List<YTypedProperty> getProperties() {
+			return getProperties(DynamicSchemaContext.NULL);
+		}
+
+		/**
+		 * Deprecated. This method disregards {@link DynamicSchemaContext}. This may be
+		 * alright for Schemas which don't rely on it but it will result in incorrect/inaccurate
+		 * behavior for Schemas that do.
+		 */
+		@Deprecated
+		public Map<String, YTypedProperty> getPropertiesMap() {
+			return getPropertiesMap(DynamicSchemaContext.NULL);
+		}
 	}
 
 	public static class YAtomicType extends AbstractType {
@@ -309,6 +398,141 @@ public class YTypeFactory {
 			return true;
 		}
 	}
+	
+	/**
+	 * Represents a union of several bean types. It is assumed one primary property
+	 * exists in each of the the sub-bean types that can be used to identify the
+	 * type. In other words the primary property has a unique name so that when
+	 * this property is being assigned a value we can infer from that which
+	 * specific bean-type we are dealing with.
+	 */
+	public class YBeanUnionType extends AbstractType {
+		private final String name;
+		private List<YBeanType> types;
+
+		private Map<String, AbstractType> typesByPrimary;
+		private ImmutableList<YTypedProperty> primaryProps;
+
+		public YBeanUnionType(String name, YBeanType... types) {
+			this.name = name;
+			this.types = new ArrayList<>(Arrays.asList(types));
+		}
+		
+		public synchronized void addUnionMember(YBeanType type) {
+			types.add(type);
+		}
+		
+		private String findPrimary(AbstractType t, List<YBeanType> types) {
+			//Note: passing null dynamic context below is okay, assuming the properties in YBeanType
+			// do not care about dynamic context.
+			for (YTypedProperty p : t.getProperties(DynamicSchemaContext.NULL)) {
+				String name = p.getName();
+				if (isUniqueFor(name, t, types)) {
+					return name;
+				}
+			}
+			Assert.isLegal(false, "Couldn't find a unique property key for "+t);
+			return null; //unreachable, but compiler doesn't know.
+		}
+		private boolean isUniqueFor(String name, AbstractType t, List<YBeanType> types) {
+			for (YBeanType other : types) {
+				if (other!=t) {
+					//Note: passing null dynamic context below is okay, assuming the properties in YBeanType
+					// do not care about dynamic context.
+					if (other.getPropertiesMap(DynamicSchemaContext.NULL).containsKey(name)) {
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+		@Override
+		public String toString() {
+			return name;
+		}
+		@Override
+		public boolean isBean() {
+			return true;
+		}
+
+		@Override
+		public Map<String, YTypedProperty> getPropertiesMap(DynamicSchemaContext dc) {
+			return asMap(getProperties(dc));
+		}
+
+		private Map<String, YTypedProperty> asMap(List<YTypedProperty> properties) {
+			ImmutableMap.Builder<String, YTypedProperty> builder = ImmutableMap.builder();
+			for (YTypedProperty p : properties) {
+				builder.put(p.getName(), p);
+			}
+			return builder.build();
+		}
+
+		@Override
+		public List<YTypedProperty> getProperties(DynamicSchemaContext dc) {
+			Set<String> existingProps = dc.getDefinedProperties();
+			if (!existingProps.isEmpty()) {
+				Builder<YTypedProperty> builder = ImmutableList.builder();
+				for (Entry<String, AbstractType> entry : typesByPrimary().entrySet()) {
+					String primaryName = entry.getKey();
+					if (existingProps.contains(primaryName)) {
+						builder.addAll(entry.getValue().getProperties(dc));
+						break;
+					}
+				}
+				//Add 'shared' properties too:
+				builder.addAll(super.getProperties(dc));
+				return builder.build();
+			}
+			//Reaching here means we couldn't guess the type from existing props.
+			//We'll just return the primary properties, these are good to give as hints
+			//then, since at least one of them should be added.
+			return getPrimaryProps(dc);
+		}
+
+		private synchronized Map<String, AbstractType> typesByPrimary() {
+			if (typesByPrimary==null) {
+				//To ensure that the map of 'typesByPrimary' is never stale, make the list of
+				// types immutable at this point. The assumption here is that union can be
+				// built up flexibly using mutation ops during initialization, but once it 
+				// starts being used it becomes immutable.
+				types = ImmutableList.copyOf(types);
+				ImmutableMap.Builder<String, AbstractType> builder = ImmutableMap.builder();
+				for (YType _t : types) {
+					AbstractType t = (AbstractType)_t;
+					builder.put(findPrimary(t, types), t);
+				}
+				typesByPrimary = builder.build();
+			}
+			return typesByPrimary;
+		}
+
+		private List<YTypedProperty> getPrimaryProps(DynamicSchemaContext dc) {
+			if (primaryProps==null) {
+				Builder<YTypedProperty> builder = ImmutableList.builder();
+				for (Entry<String, AbstractType> entry : typesByPrimary().entrySet()) {
+					builder.add(entry.getValue().getPropertiesMap(dc).get(entry.getKey()));
+				}
+				primaryProps = builder.build();
+			}
+			return primaryProps;
+		}
+		
+		@Override
+		public YType inferMoreSpecificType(DynamicSchemaContext dc) {
+			Set<String> existingProps = dc.getDefinedProperties();
+			if (!existingProps.isEmpty()) {
+				for (Entry<String, AbstractType> entry : typesByPrimary().entrySet()) {
+					String primaryName = entry.getKey();
+					if (existingProps.contains(primaryName)) {
+						return entry.getValue();
+					}
+				}
+			}
+			return super.inferMoreSpecificType(dc);
+		}
+	}
+
 
 	public static class YTypedPropertyImpl implements YTypedProperty {
 
@@ -360,4 +584,9 @@ public class YTypeFactory {
 		t.parseWith(new EnumValueParser(name, values));
 		return t;
 	}
+	
+	public YValueHint hint(String value, String label) {
+		return new BasicYValueHint(value, label);
+	}
+
 }

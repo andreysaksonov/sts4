@@ -5,9 +5,9 @@ import org.eclipse.lsp4j.CompletionItemKind;
 import org.springframework.ide.vscode.commons.languageserver.completion.DocumentEdits;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.completion.ScoreableProposal;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
 import org.springframework.ide.vscode.commons.util.Renderable;
-import org.springframework.ide.vscode.commons.yaml.hover.YPropertyHoverInfo;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
+import org.springframework.ide.vscode.commons.yaml.hover.YPropertyInfoTemplates;
 import org.springframework.ide.vscode.commons.yaml.schema.YType;
 import org.springframework.ide.vscode.commons.yaml.schema.YTypeUtil;
 import org.springframework.ide.vscode.commons.yaml.schema.YTypedProperty;
@@ -64,7 +64,7 @@ public class DefaultCompletionFactory implements CompletionFactory {
 
 		@Override
 		public Renderable getDocumentation() {
-			return YPropertyHoverInfo.create(contextProperty, contextType, p);
+			return YPropertyInfoTemplates.createCompletionDocumentation(contextProperty, contextType, p);
 		}
 	}
 	

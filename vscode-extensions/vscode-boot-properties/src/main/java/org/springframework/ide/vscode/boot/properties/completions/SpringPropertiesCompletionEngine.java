@@ -2,14 +2,14 @@ package org.springframework.ide.vscode.boot.properties.completions;
 
 import java.util.Collection;
 
-import org.springframework.ide.vscode.application.properties.metadata.SpringPropertyIndexProvider;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtilProvider;
 import org.springframework.ide.vscode.boot.common.PropertyCompletionFactory;
+import org.springframework.ide.vscode.boot.metadata.SpringPropertyIndexProvider;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtilProvider;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionEngine;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.java.JavaProjectFinder;
-import org.springframework.ide.vscode.commons.languageserver.util.BadLocationException;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;;
+import org.springframework.ide.vscode.commons.util.BadLocationException;
+import org.springframework.ide.vscode.commons.util.text.IDocument;;
 
 /**
  * @author Kris De Volder

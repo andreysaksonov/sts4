@@ -18,22 +18,27 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.springframework.ide.vscode.application.properties.metadata.IndexNavigator;
-import org.springframework.ide.vscode.application.properties.metadata.PropertyInfo;
-import org.springframework.ide.vscode.application.properties.metadata.hints.HintProvider;
-import org.springframework.ide.vscode.application.properties.metadata.hints.StsValueHint;
-import org.springframework.ide.vscode.application.properties.metadata.hints.ValueHintHoverInfo;
-import org.springframework.ide.vscode.application.properties.metadata.types.Type;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeParser;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.BeanPropertyNameMode;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.EnumCaseMode;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypedProperty;
-import org.springframework.ide.vscode.application.properties.metadata.util.FuzzyMap;
-import org.springframework.ide.vscode.application.properties.metadata.util.FuzzyMap.Match;
+import org.springframework.boot.configurationmetadata.Deprecation;
+import org.springframework.ide.vscode.boot.common.InformationTemplates;
 import org.springframework.ide.vscode.boot.common.PropertyCompletionFactory;
-import org.springframework.ide.vscode.boot.common.PropertyRenderableProvider;
 import org.springframework.ide.vscode.boot.common.RelaxedNameConfig;
+import org.springframework.ide.vscode.boot.metadata.IndexNavigator;
+import org.springframework.ide.vscode.boot.metadata.PropertyInfo;
+import org.springframework.ide.vscode.boot.metadata.hints.HintProvider;
+import org.springframework.ide.vscode.boot.metadata.hints.StsValueHint;
+import org.springframework.ide.vscode.boot.metadata.hints.ValueHintHoverInfo;
+import org.springframework.ide.vscode.boot.metadata.types.Type;
+import org.springframework.ide.vscode.boot.metadata.types.TypeParser;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.BeanPropertyNameMode;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.EnumCaseMode;
+import org.springframework.ide.vscode.boot.metadata.types.TypedProperty;
+import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap;
+import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap.Match;
+import org.springframework.ide.vscode.commons.java.IField;
+import org.springframework.ide.vscode.commons.java.IJavaElement;
+import org.springframework.ide.vscode.commons.java.IMember;
+import org.springframework.ide.vscode.commons.javadoc.IJavadoc;
 import org.springframework.ide.vscode.commons.languageserver.completion.DocumentEdits;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.completion.LazyProposalApplier;
@@ -43,6 +48,7 @@ import org.springframework.ide.vscode.commons.util.CollectionUtil;
 import org.springframework.ide.vscode.commons.util.FuzzyMatcher;
 import org.springframework.ide.vscode.commons.util.Log;
 import org.springframework.ide.vscode.commons.util.Renderable;
+import org.springframework.ide.vscode.commons.util.Renderables;
 import org.springframework.ide.vscode.commons.util.StringUtil;
 import org.springframework.ide.vscode.commons.yaml.completion.AbstractYamlAssistContext;
 import org.springframework.ide.vscode.commons.yaml.completion.TopLevelAssistContext;
@@ -57,6 +63,8 @@ import org.springframework.ide.vscode.commons.yaml.structure.YamlStructureParser
 import org.springframework.ide.vscode.commons.yaml.structure.YamlStructureParser.SNode;
 import org.springframework.ide.vscode.commons.yaml.util.YamlIndentUtil;
 import org.springframework.ide.vscode.commons.yaml.util.YamlUtil;
+
+import com.google.common.collect.ImmutableList;
 
 /**
  * Represents a context insied a "application.yml" file relative to which we can provide
@@ -80,8 +88,8 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 
 	public final TypeUtil typeUtil;
 
-	public ApplicationYamlAssistContext(int documentSelector, YamlPath contextPath, TypeUtil typeUtil, RelaxedNameConfig conf) {
-		super(documentSelector, contextPath);
+	public ApplicationYamlAssistContext(YamlDocument doc, int documentSelector, YamlPath contextPath, TypeUtil typeUtil, RelaxedNameConfig conf) {
+		super(doc, documentSelector, contextPath);
 		this.typeUtil = typeUtil;
 		this.conf = conf;
 	}
@@ -113,16 +121,16 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 	 */
 	protected abstract Type getType();
 
-	public static ApplicationYamlAssistContext subdocument(int documentSelector, FuzzyMap<PropertyInfo> index, PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf) {
-		return new IndexContext(documentSelector, YamlPath.EMPTY, IndexNavigator.with(index), completionFactory, typeUtil, conf);
+	public static ApplicationYamlAssistContext subdocument(YamlDocument doc, int documentSelector, FuzzyMap<PropertyInfo> index, PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf) {
+		return new IndexContext(doc, documentSelector, YamlPath.EMPTY, IndexNavigator.with(index), completionFactory, typeUtil, conf);
 	}
 
-	public static YamlAssistContext forPath(YamlPath contextPath,  FuzzyMap<PropertyInfo> index, PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf) {
+	public static YamlAssistContext forPath(YamlDocument doc, YamlPath contextPath,  FuzzyMap<PropertyInfo> index, PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf) {
 		try {
 			YamlPathSegment documentSelector = contextPath.getSegment(0);
 			if (documentSelector!=null) {
 				contextPath = contextPath.dropFirst(1);
-				YamlAssistContext context = ApplicationYamlAssistContext.subdocument(documentSelector.toIndex(), index, completionFactory, typeUtil, conf);
+				YamlAssistContext context = ApplicationYamlAssistContext.subdocument(doc, documentSelector.toIndex(), index, completionFactory, typeUtil, conf);
 				for (YamlPathSegment s : contextPath.getSegments()) {
 					if (context==null) return null;
 					context = context.traverse(s);
@@ -147,7 +155,7 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 
 		public TypeContext(ApplicationYamlAssistContext parent, YamlPath contextPath, Type type,
 				PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf, HintProvider hints) {
-			super(parent.documentSelector, contextPath, typeUtil, conf);
+			super(parent.getDocument(), parent.documentSelector, contextPath, typeUtil, conf);
 			this.parent = parent;
 			this.completionFactory = completionFactory;
 			this.type = type;
@@ -365,7 +373,12 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 				// the index to navigating type/bean properties
 				return parent.getHoverInfo();
 			} else {
-				return new JavaTypeNavigationHoverInfo(contextPath.toPropString(), contextPath.getBeanPropertyName(), parent.getType(), getType(), typeUtil).getRenderable();
+				String id = contextPath.toPropString();
+				String propName = contextPath.getBeanPropertyName();
+				String typeString = typeUtil.niceTypeName(getType());
+				Type parentType = parent.getType();
+				return InformationTemplates.createHover(id, typeString, null,
+						getDescription(typeUtil, parentType, propName), getDeprecation(typeUtil, parentType, propName));
 			}
 		}
 
@@ -388,9 +401,9 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 		private IndexNavigator indexNav;
 		PropertyCompletionFactory completionFactory;
 
-		public IndexContext(int documentSelector, YamlPath contextPath, IndexNavigator indexNav,
+		public IndexContext(YamlDocument doc, int documentSelector, YamlPath contextPath, IndexNavigator indexNav,
 				PropertyCompletionFactory completionFactory, TypeUtil typeUtil, RelaxedNameConfig conf) {
-			super(documentSelector, contextPath, typeUtil, conf);
+			super(doc, documentSelector, contextPath, typeUtil, conf);
 			this.indexNav = indexNav;
 			this.completionFactory = completionFactory;
 		}
@@ -466,9 +479,9 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 					}
 				}
 				if (subIndex.getExtensionCandidate()!=null) {
-					return new IndexContext(documentSelector, contextPath.append(s), subIndex, completionFactory, typeUtil, conf);
+					return new IndexContext(getDocument(), documentSelector, contextPath.append(s), subIndex, completionFactory, typeUtil, conf);
 				} else if (subIndex.getExactMatch()!=null) {
-					IndexContext asIndexContext = new IndexContext(documentSelector, contextPath.append(s), subIndex, completionFactory, typeUtil, conf);
+					IndexContext asIndexContext = new IndexContext(getDocument(), documentSelector, contextPath.append(s), subIndex, completionFactory, typeUtil, conf);
 					PropertyInfo prop = subIndex.getExactMatch();
 					return new TypeContext(asIndexContext, contextPath.append(s), TypeParser.parse(prop.getType()), completionFactory, typeUtil, conf, prop.getHints(typeUtil, true));
 				}
@@ -495,7 +508,8 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 		public Renderable getHoverInfo() {
 			PropertyInfo prop = indexNav.getExactMatch();
 			if (prop!=null) {
-				return new PropertyRenderableProvider(typeUtil.getJavaProject(), prop).getRenderable();
+				return  InformationTemplates.createHover(prop);
+//				return new PropertyRenderableProvider(typeUtil.getJavaProject(), prop).getRenderable();
 			}
 			return null;
 		}
@@ -518,12 +532,79 @@ public abstract class ApplicationYamlAssistContext extends AbstractYamlAssistCon
 		return null;
 	}
 
-	public static YamlAssistContext global(final FuzzyMap<PropertyInfo> index, final PropertyCompletionFactory completionFactory, final TypeUtil typeUtil, final RelaxedNameConfig conf) {
+	public static YamlAssistContext global(YamlDocument doc, final FuzzyMap<PropertyInfo> index, final PropertyCompletionFactory completionFactory, final TypeUtil typeUtil, final RelaxedNameConfig conf) {
 		return new TopLevelAssistContext() {
 			@Override
 			protected YamlAssistContext getDocumentContext(int documentSelector) {
-				return subdocument(documentSelector, index, completionFactory, typeUtil, conf);
+				return subdocument(doc, documentSelector, index, completionFactory, typeUtil, conf);
+			}
+
+			@Override
+			public YamlDocument getDocument() {
+				return doc;
 			}
 		};
 	}
+	
+	private static Deprecation getDeprecation(TypeUtil typeUtil, Type parentType, String propName) {
+		Map<String, TypedProperty> props = typeUtil.getPropertiesMap(parentType, EnumCaseMode.ALIASED, BeanPropertyNameMode.ALIASED);
+		if (props!=null) {
+			TypedProperty prop = props.get(propName);
+			if (prop!=null) {
+				return prop.getDeprecation();
+			}
+		}
+		return null;
+	}
+	
+	private static Renderable getDescription(TypeUtil typeUtil, Type parentType, String propName) {
+		try {
+			List<IJavaElement> jes = getAllJavaElements(typeUtil, parentType, propName);
+			if (jes != null) {
+				for (IJavaElement je : jes) {
+					if (je instanceof IMember) {
+						IJavadoc javadoc = je.getJavaDoc();
+						if (javadoc != null) {
+							return javadoc.getRenderable();
+						}
+					}
+				}
+			}
+		} catch (Exception e) {
+			Log.log(e);
+		}
+		return Renderables.NO_DESCRIPTION;
+	}
+	
+	private static List<IJavaElement> getAllJavaElements(TypeUtil typeUtil, Type parentType, String propName) {
+		if (propName!=null) {
+			Type beanType = parentType;
+			if (TypeUtil.isMap(beanType)) {
+				Type keyType = typeUtil.getKeyType(beanType);
+				if (keyType!=null && typeUtil.isEnum(keyType)) {
+					IField field = typeUtil.getEnumConstant(keyType, propName);
+					if (field!=null) {
+						return ImmutableList.of(field);
+					}
+				}
+			} else {
+				ArrayList<IJavaElement> elements = new ArrayList<IJavaElement>(3);
+				maybeAdd(elements, typeUtil.getField(beanType, propName));
+				maybeAdd(elements, typeUtil.getSetter(beanType, propName).get());
+				maybeAdd(elements, typeUtil.getGetter(beanType, propName));
+				if (!elements.isEmpty()) {
+					return elements;
+				}
+			}
+		}
+		return ImmutableList.of();
+	}
+
+	private static void maybeAdd(ArrayList<IJavaElement> elements, IJavaElement e) {
+		if (e!=null) {
+			elements.add(e);
+		}
+	}
+
+
 }

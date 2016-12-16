@@ -13,12 +13,12 @@ package org.springframework.ide.vscode.boot;
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
-import org.springframework.ide.vscode.application.properties.metadata.PropertyInfo;
-import org.springframework.ide.vscode.application.properties.metadata.SpringPropertyIndexProvider;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtilProvider;
-import org.springframework.ide.vscode.application.properties.metadata.util.FuzzyMap;
 import org.springframework.ide.vscode.boot.common.PropertyCompletionFactory;
 import org.springframework.ide.vscode.boot.common.RelaxedNameConfig;
+import org.springframework.ide.vscode.boot.metadata.PropertyInfo;
+import org.springframework.ide.vscode.boot.metadata.SpringPropertyIndexProvider;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtilProvider;
+import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap;
 import org.springframework.ide.vscode.boot.properties.completions.SpringPropertiesCompletionEngine;
 import org.springframework.ide.vscode.boot.properties.hover.PropertiesHoverInfoProvider;
 import org.springframework.ide.vscode.boot.properties.reconcile.SpringPropertiesReconcileEngine;
@@ -29,12 +29,16 @@ import org.springframework.ide.vscode.commons.languageserver.completion.VscodeCo
 import org.springframework.ide.vscode.commons.languageserver.hover.HoverInfoProvider;
 import org.springframework.ide.vscode.commons.languageserver.hover.VscodeHoverEngineAdapter;
 import org.springframework.ide.vscode.commons.languageserver.hover.VscodeHoverEngineAdapter.HoverType;
+import org.springframework.ide.vscode.commons.languageserver.java.DefaultJavaProjectFinder;
+import org.springframework.ide.vscode.commons.languageserver.java.IJavaProjectFinderStrategy;
 import org.springframework.ide.vscode.commons.languageserver.java.JavaProjectFinder;
 import org.springframework.ide.vscode.commons.languageserver.reconcile.IReconcileEngine;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
 import org.springframework.ide.vscode.commons.languageserver.util.SimpleLanguageServer;
 import org.springframework.ide.vscode.commons.languageserver.util.SimpleTextDocumentService;
-import org.springframework.ide.vscode.commons.languageserver.util.TextDocument;
+import org.springframework.ide.vscode.commons.maven.JavaProjectWithClasspathFileFinderStrategy;
+import org.springframework.ide.vscode.commons.maven.MavenProjectFinderStrategy;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
+import org.springframework.ide.vscode.commons.util.text.TextDocument;
 import org.springframework.ide.vscode.commons.yaml.ast.YamlASTProvider;
 import org.springframework.ide.vscode.commons.yaml.ast.YamlParser;
 import org.springframework.ide.vscode.commons.yaml.completion.YamlAssistContext;
@@ -54,6 +58,11 @@ import com.google.common.collect.ImmutableList;
  *
  */
 public class BootPropertiesLanguageServer extends SimpleLanguageServer {
+	
+	public static final JavaProjectFinder DEFAULT_PROJECT_FINDER = new DefaultJavaProjectFinder(new IJavaProjectFinderStrategy[] {
+			new MavenProjectFinderStrategy(),
+			new JavaProjectWithClasspathFileFinderStrategy()
+	});
 
 	private static final String YML = ".yml";
 	private static final String PROPERTIES = ".properties";
@@ -83,7 +92,7 @@ public class BootPropertiesLanguageServer extends SimpleLanguageServer {
 			public YamlAssistContext getGlobalAssistContext(YamlDocument ydoc) {
 				IDocument doc = ydoc.getDocument();
 				FuzzyMap<PropertyInfo> index = indexProvider.getIndex(doc);
-				return ApplicationYamlAssistContext.global(index, completionFactory, typeUtilProvider.getTypeUtil(doc), relaxedNameConfig);
+				return ApplicationYamlAssistContext.global(ydoc, index, completionFactory, typeUtilProvider.getTypeUtil(doc), relaxedNameConfig);
 			}
 		};
 
@@ -151,7 +160,7 @@ public class BootPropertiesLanguageServer extends SimpleLanguageServer {
 	protected ServerCapabilities getServerCapabilities() {
 		ServerCapabilities c = new ServerCapabilities();
 		
-		c.setTextDocumentSync(TextDocumentSyncKind.Full);
+		c.setTextDocumentSync(TextDocumentSyncKind.Incremental);
 		CompletionOptions completionProvider = new CompletionOptions();
 		completionProvider.setResolveProvider(false);
 		c.setCompletionProvider(completionProvider);

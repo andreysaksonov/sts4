@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.eclipse.lsp4j.CodeActionParams;
@@ -42,7 +43,10 @@ import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.springframework.ide.vscode.commons.util.Assert;
+import org.springframework.ide.vscode.commons.util.BadLocationException;
+import org.springframework.ide.vscode.commons.util.ExceptionUtil;
 import org.springframework.ide.vscode.commons.util.Futures;
+import org.springframework.ide.vscode.commons.util.text.TextDocument;
 
 import com.google.common.collect.ImmutableList;
 
@@ -60,7 +64,6 @@ public class SimpleTextDocumentService implements TextDocumentService {
 	public SimpleTextDocumentService(SimpleLanguageServer server) {
 		this.server = server;
 	}
-
 
 	public synchronized void onHover(HoverHandler h) {
 		Assert.isNull("A hover handler is already set, multiple handlers not supported yet", hoverHandler);
@@ -87,20 +90,25 @@ public class SimpleTextDocumentService implements TextDocumentService {
 
 	@Override
 	public final void didChange(DidChangeTextDocumentParams params) {
-		VersionedTextDocumentIdentifier docId = params.getTextDocument();
-		String url = docId.getUri();
-		if (url!=null) {
-			TextDocument doc = getOrCreateDocument(url);
-			for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
-				doc.apply(change);
-				didChangeContent(doc, change);
+		try {
+			VersionedTextDocumentIdentifier docId = params.getTextDocument();
+			String url = docId.getUri();
+			LOG.info("didChange: "+url);
+			if (url!=null) {
+				TextDocument doc = getOrCreateDocument(url);
+				for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
+					doc.apply(change);
+					didChangeContent(doc, change);
+				}
 			}
+		} catch (BadLocationException e) {
+			LOG.log(Level.SEVERE, ExceptionUtil.getMessage(e), e);
 		}
 	}
 
 	@Override
 	public void didOpen(DidOpenTextDocumentParams params) {
-		//LOG.info("didOpen: "+params);
+		LOG.info("didOpen: "+params.getUri());
 		//Example message:
 		//{
 		//   "jsonrpc":"2.0",
@@ -142,7 +150,7 @@ public class SimpleTextDocumentService implements TextDocumentService {
 
 	@Override
 	public void didClose(DidCloseTextDocumentParams params) {
-		System.out.println("closing: "+params.getTextDocument().getUri());
+		LOG.info("didClose: "+params.getTextDocument().getUri());
 		String url = params.getTextDocument().getUri();
 		if (url!=null) {
 			documents.remove(url);

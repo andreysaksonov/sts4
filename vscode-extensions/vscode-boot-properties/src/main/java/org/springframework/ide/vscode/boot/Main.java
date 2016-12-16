@@ -12,14 +12,13 @@ package org.springframework.ide.vscode.boot;
 
 import java.io.IOException;
 
-import org.eclipse.lsp4j.services.LanguageServer;
-import org.springframework.ide.vscode.application.properties.metadata.DefaultSpringPropertyIndexProvider;
-import org.springframework.ide.vscode.application.properties.metadata.SpringPropertyIndexProvider;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtilProvider;
+import org.springframework.ide.vscode.boot.metadata.DefaultSpringPropertyIndexProvider;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtilProvider;
 import org.springframework.ide.vscode.commons.languageserver.LaunguageServerApp;
 import org.springframework.ide.vscode.commons.languageserver.java.JavaProjectFinder;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
+import org.springframework.ide.vscode.commons.languageserver.util.SimpleLanguageServer;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
 
 /**
  * Starts up Language Server process
@@ -29,13 +28,14 @@ import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
  *
  */
 public class Main {
-	
+		
 	public static void main(String[] args) throws IOException {
 		LaunguageServerApp.start(() -> {
-			JavaProjectFinder javaProjectFinder = JavaProjectFinder.DEFAULT;
-			SpringPropertyIndexProvider indexProvider = new DefaultSpringPropertyIndexProvider(javaProjectFinder);
+			JavaProjectFinder javaProjectFinder = BootPropertiesLanguageServer.DEFAULT_PROJECT_FINDER;
+			DefaultSpringPropertyIndexProvider indexProvider = new DefaultSpringPropertyIndexProvider(javaProjectFinder);
 			TypeUtilProvider typeUtilProvider = (IDocument doc) -> new TypeUtil(javaProjectFinder.find(doc));
-			LanguageServer server = new BootPropertiesLanguageServer(indexProvider, typeUtilProvider, javaProjectFinder);
+			SimpleLanguageServer server = new BootPropertiesLanguageServer(indexProvider, typeUtilProvider, javaProjectFinder);
+			indexProvider.setProgressService(server.getProgressService());
 			return server;
 		});
 	}

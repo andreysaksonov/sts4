@@ -1,22 +1,22 @@
 package org.springframework.ide.vscode.boot.properties.reconcile;
 
-import static org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.isBracketable;
+import static org.springframework.ide.vscode.boot.metadata.types.TypeUtil.isBracketable;
 import static org.springframework.ide.vscode.boot.properties.reconcile.SpringPropertyProblem.problem;
 
 import java.util.List;
 
-import org.springframework.ide.vscode.application.properties.metadata.types.Type;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.BeanPropertyNameMode;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil.EnumCaseMode;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypedProperty;
+import org.springframework.ide.vscode.boot.metadata.types.Type;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
+import org.springframework.ide.vscode.boot.metadata.types.TypedProperty;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.BeanPropertyNameMode;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.EnumCaseMode;
 import org.springframework.ide.vscode.commons.languageserver.reconcile.IProblemCollector;
 import org.springframework.ide.vscode.commons.languageserver.reconcile.ReconcileProblem;
-import org.springframework.ide.vscode.commons.languageserver.util.BadLocationException;
 import org.springframework.ide.vscode.commons.languageserver.util.DocumentRegion;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
+import org.springframework.ide.vscode.commons.util.BadLocationException;
 import org.springframework.ide.vscode.commons.util.StringUtil;
 import org.springframework.ide.vscode.commons.util.ValueParser;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
 
 /**
  * Helper class for {@link SpringPropertiesReconcileEngine} and {@link SpringPropertiesCompletionEngine}.

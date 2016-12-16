@@ -11,23 +11,20 @@
 package org.springframework.ide.vscode.boot.common;
 
 import org.eclipse.lsp4j.CompletionItemKind;
-import org.springframework.ide.vscode.application.properties.metadata.PropertyInfo;
-import org.springframework.ide.vscode.application.properties.metadata.types.Type;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeParser;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypeUtil;
-import org.springframework.ide.vscode.application.properties.metadata.types.TypedProperty;
-import org.springframework.ide.vscode.application.properties.metadata.util.FuzzyMap.Match;
+import org.springframework.ide.vscode.boot.metadata.PropertyInfo;
+import org.springframework.ide.vscode.boot.metadata.types.Type;
+import org.springframework.ide.vscode.boot.metadata.types.TypeParser;
+import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
+import org.springframework.ide.vscode.boot.metadata.types.TypedProperty;
+import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap.Match;
 import org.springframework.ide.vscode.commons.languageserver.completion.DocumentEdits;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.completion.ScoreableProposal;
 import org.springframework.ide.vscode.commons.languageserver.java.JavaProjectFinder;
-import org.springframework.ide.vscode.commons.languageserver.util.IDocument;
 import org.springframework.ide.vscode.commons.util.Renderable;
-import org.springframework.ide.vscode.commons.yaml.hover.YPropertyHoverInfo;
+import org.springframework.ide.vscode.commons.util.text.IDocument;
+import org.springframework.ide.vscode.commons.yaml.hover.YPropertyInfoTemplates;
 import org.springframework.ide.vscode.commons.yaml.schema.YType;
-
-import com.google.common.base.Supplier;
-import com.google.common.base.Suppliers;
 
 public class PropertyCompletionFactory {
 	
@@ -75,7 +72,7 @@ public class PropertyCompletionFactory {
 
 			@Override
 			public Renderable getDocumentation() {
-				return YPropertyHoverInfo.create(contextProperty, contextType, property);
+				return YPropertyInfoTemplates.createCompletionDocumentation(contextProperty, contextType, property);
 			}
 
 			@Override
@@ -126,14 +123,12 @@ public class PropertyCompletionFactory {
 		private Match<PropertyInfo> match;
 		private Type type;
 		private TypeUtil typeUtil;
-		private Supplier<PropertyRenderableProvider> propertyRenderable;
 
 		public PropertyProposal(IDocument doc, DocumentEdits applier, Match<PropertyInfo> match,
 				TypeUtil typeUtil) {
 			super(doc, applier);
 			this.typeUtil = typeUtil;
 			this.match = match;
-			this.propertyRenderable = Suppliers.memoize(() -> new ShortDocumentationRenderableProvider(documentContextFinder.find(fDoc), match.data));
 			if (match.data.isDeprecated()) {
 				deprecate();
 			}
@@ -174,7 +169,7 @@ public class PropertyCompletionFactory {
 
 		@Override
 		public Renderable getDocumentation() {
-			return propertyRenderable.get().getRenderable();
+			return InformationTemplates.createCompletionDocumentation(match.data);
 		}
 		
 	}

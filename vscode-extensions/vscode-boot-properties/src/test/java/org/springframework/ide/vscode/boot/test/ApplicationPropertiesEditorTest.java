@@ -24,16 +24,16 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.Diagnostic;
 import org.junit.Ignore;
 import org.junit.Test;
-import org.springframework.ide.vscode.application.properties.metadata.CachingValueProvider;
-import org.springframework.ide.vscode.application.properties.metadata.PropertiesLoader;
 import org.springframework.ide.vscode.boot.BootPropertiesLanguageServer;
+import org.springframework.ide.vscode.boot.editor.harness.AbstractPropsEditorTest;
+import org.springframework.ide.vscode.boot.editor.harness.StyledStringMatcher;
+import org.springframework.ide.vscode.boot.metadata.CachingValueProvider;
+import org.springframework.ide.vscode.boot.metadata.PropertiesLoader;
 import org.springframework.ide.vscode.commons.java.IJavaProject;
 import org.springframework.ide.vscode.commons.java.IType;
 import org.springframework.ide.vscode.commons.languageserver.util.SimpleLanguageServer;
 import org.springframework.ide.vscode.commons.maven.java.MavenJavaProject;
 import org.springframework.ide.vscode.languageserver.testharness.Editor;
-import org.springframework.ide.vscode.properties.editor.test.harness.AbstractPropsEditorTest;
-import org.springframework.ide.vscode.properties.editor.test.harness.StyledStringMatcher;
 
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.Files;
@@ -1577,6 +1577,14 @@ public class ApplicationPropertiesEditorTest extends AbstractPropsEditorTest {
 		editor.assertNoHover("ggggg.kkkk");
 	}
 
+	@Test public void testEmptyDescriptionHover() throws Exception {
+		data("debug", "java.lang.String", null, null);
+		Editor editor = newEditor(
+				"debug=something\n"
+		);
+		editor.assertHoverExactText("debug", "[**debug**  \n[java.lang.String](null)]");
+	}
+	
 	@Override
 	protected SimpleLanguageServer newLanguageServer() {
 		BootPropertiesLanguageServer server = new BootPropertiesLanguageServer(md.getIndexProvider(), typeUtilProvider, javaProjectFinder);

@@ -12,6 +12,8 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import javax.inject.Provider;
+
 import org.eclipse.lsp4j.jsonrpc.Launcher;
 import org.eclipse.lsp4j.jsonrpc.MessageConsumer;
 import org.eclipse.lsp4j.services.LanguageClient;
@@ -19,7 +21,6 @@ import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
 import org.springframework.ide.vscode.commons.languageserver.util.LoggingFormat;
 
-import com.google.inject.Provider;
 
 /**
  * Abstract class meant to minimize the amount of code needed to
@@ -144,8 +145,8 @@ public abstract class LaunguageServerApp {
 				}
 			};
 		};
-		Launcher<LanguageClient> launcher = Launcher.createLauncher(server,
-				LanguageClient.class,
+		Launcher<STS4LanguageClient> launcher = Launcher.createLauncher(server,
+				STS4LanguageClient.class,
 				connection.in,
 				connection.out,
 				executor,

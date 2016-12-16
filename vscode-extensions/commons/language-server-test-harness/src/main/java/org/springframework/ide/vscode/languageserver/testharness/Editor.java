@@ -162,6 +162,10 @@ public class Editor {
 		return document.getText();
 	}
 
+	private void replaceText(int start, int end, String newText) {
+		document = harness.changeDocument(document.getUri(), start, end, newText);
+	}
+
 	public void setRawText(String newContent) throws Exception {
 		document = harness.changeDocument(document.getUri(), newContent);
 	}
@@ -249,8 +253,7 @@ public class Editor {
 			Range rng = edit.getRange();
 			int start = document.toOffset(rng.getStart());
 			int end = document.toOffset(rng.getEnd());
-			String newText = docText.substring(0, start) + replaceWith + docText.substring(end);
-			setRawText(newText);
+			replaceText(start, end, replaceWith);
 			selectionStart = selectionEnd = start+cursorReplaceOffset;
 		} else {
 			String insertText = getInsertText(completion);
@@ -338,6 +341,20 @@ public class Editor {
 		}
 		Hover hover = harness.getHover(document, document.toPosition(pos));
 		assertContains(expectSnippet, hover.getContents().toString());
+	}
+
+	/**
+	 * Verifies an expected text is the hover text that is computed when
+	 * hovering mouse at position at the end of first occurrence of a given
+	 * string in the editor.
+	 */
+	public void assertHoverExactText(String afterString, String expectedHover) throws Exception {
+		int pos = getRawText().indexOf(afterString);
+		if (pos>=0) {
+			pos += afterString.length();
+		}
+		Hover hover = harness.getHover(document, document.toPosition(pos));
+		assertEquals(expectedHover, hover.getContents().toString());
 	}
 
 	public void assertCompletionDetails(String expectLabel, String expectDetail, String expectDocSnippet) throws Exception {
