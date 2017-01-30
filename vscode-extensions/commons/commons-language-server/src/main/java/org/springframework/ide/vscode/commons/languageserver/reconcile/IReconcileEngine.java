@@ -13,5 +13,10 @@ package org.springframework.ide.vscode.commons.languageserver.reconcile;
 import org.springframework.ide.vscode.commons.util.text.IDocument;
 
 public interface IReconcileEngine {
+	IReconcileEngine NULL = (d, p) -> {
+		p.beginCollecting();
+		p.endCollecting();
+	};
+
 	public void reconcile(IDocument doc, IProblemCollector problemCollector);
 }

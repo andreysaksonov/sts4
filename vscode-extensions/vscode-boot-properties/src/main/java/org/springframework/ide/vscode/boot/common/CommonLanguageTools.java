@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.boot.common;
 
 import static org.springframework.ide.vscode.commons.util.StringUtil.camelCaseToHyphens;
@@ -17,6 +28,7 @@ import org.springframework.ide.vscode.boot.metadata.types.TypeUtil;
 import org.springframework.ide.vscode.boot.metadata.types.TypeUtil.EnumCaseMode;
 import org.springframework.ide.vscode.boot.metadata.util.FuzzyMap;
 import org.springframework.ide.vscode.boot.properties.reconcile.PropertyNavigator;
+import org.springframework.ide.vscode.commons.languageserver.LanguageIds;
 import org.springframework.ide.vscode.commons.languageserver.util.DocumentRegion;
 import org.springframework.ide.vscode.commons.util.CollectionUtil;
 import org.springframework.ide.vscode.commons.util.Log;
@@ -43,7 +55,7 @@ public class CommonLanguageTools {
 			} else {
 				prop = CommonLanguageTools.findLongestValidProperty(index, propertyName);
 				if (prop!=null) {
-					TextDocument doc = new TextDocument(null);
+					TextDocument doc = new TextDocument(null, LanguageIds.PLAINTEXT);
 					doc.setText(propertyName);
 					PropertyNavigator navigator = new PropertyNavigator(doc, null, typeUtil, new DocumentRegion(doc, 0, doc.getLength()));
 					return navigator.navigate(prop.getId().length(), TypeParser.parse(prop.getType()));

@@ -10,6 +10,8 @@
  *******************************************************************************/
 package org.springframework.ide.vscode.commons.yaml.completion;
 
+import static org.springframework.ide.vscode.commons.util.ExceptionUtil.getSimpleError;
+
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -23,9 +25,12 @@ import org.springframework.ide.vscode.commons.languageserver.completion.Document
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.util.DocumentRegion;
 import org.springframework.ide.vscode.commons.util.CollectionUtil;
+import org.springframework.ide.vscode.commons.util.ExceptionUtil;
 import org.springframework.ide.vscode.commons.util.FuzzyMatcher;
 import org.springframework.ide.vscode.commons.util.Log;
 import org.springframework.ide.vscode.commons.util.Renderable;
+import org.springframework.ide.vscode.commons.util.StringUtil;
+import org.springframework.ide.vscode.commons.util.ValueParseException;
 import org.springframework.ide.vscode.commons.yaml.hover.YPropertyInfoTemplates;
 import org.springframework.ide.vscode.commons.yaml.path.YamlPath;
 import org.springframework.ide.vscode.commons.yaml.path.YamlPathSegment;
@@ -41,6 +46,8 @@ import org.springframework.ide.vscode.commons.yaml.structure.YamlStructureParser
 import org.springframework.ide.vscode.commons.yaml.structure.YamlStructureParser.SNode;
 import org.springframework.ide.vscode.commons.yaml.util.YamlIndentUtil;
 
+import com.google.common.collect.ImmutableList;
+
 public class YTypeAssistContext extends AbstractYamlAssistContext {
 
 	final static Logger logger = LoggerFactory.getLogger(YTypeAssistContext.class);
@@ -52,8 +59,8 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 	public YTypeAssistContext(YTypeAssistContext parent, YamlPath contextPath, YType YType, YTypeUtil typeUtil) {
 		super(parent.getDocument(), parent.documentSelector, contextPath);
 		this.parent = parent;
-		this.type = YType;
 		this.typeUtil = typeUtil;
+		this.type = typeUtil.inferMoreSpecificType(YType, getSchemaContext());
 	}
 
 	public YTypeAssistContext(TopLevelAssistContext parent, int documentSelector, YType type, YTypeUtil typeUtil) {
@@ -75,9 +82,9 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 
 	public List<ICompletionProposal> getKeyCompletions(YamlDocument doc, int offset, String query) throws Exception {
 		int queryOffset = offset - query.length();
-		SNode contextNode = getContextNode(doc);
-		DynamicSchemaContext dynamicCtxt = new SNodeDynamicSchemaContext(contextNode);
-		List<YTypedProperty> properties = typeUtil.getProperties(type, dynamicCtxt);
+		SNode contextNode = getContextNode();
+		DynamicSchemaContext dynamicCtxt = getSchemaContext();
+		List<YTypedProperty> properties = typeUtil.getProperties(type);
 		if (CollectionUtil.hasElements(properties)) {
 			ArrayList<ICompletionProposal> proposals = new ArrayList<>(properties.size());
 			Set<String> definedProps = dynamicCtxt.getDefinedProperties();
@@ -91,6 +98,10 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 						//property not yet defined
 						YType YType = p.getType();
 						edits.delete(queryOffset, query);
+						if (queryOffset>0 && !Character.isWhitespace(doc.getChar(queryOffset-1))) {
+							//See https://www.pivotaltracker.com/story/show/137722057
+							edits.insert(queryOffset, " ");
+						}
 						edits.createPathInPlace(contextNode, relativePath, queryOffset, appendTextFor(YType));
 						proposals.add(completionFactory().beanProperty(doc.getDocument(),
 								contextPath.toPropString(), getType(),
@@ -143,14 +154,23 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 	}
 
 	private List<ICompletionProposal> getValueCompletions(YamlDocument doc, int offset, String query) {
-		YValueHint[] values = typeUtil.getHintValues(type);
+		YValueHint[] values=null;
+		try {
+			values = typeUtil.getHintValues(type, getSchemaContext());
+		} catch (Exception e) {
+			return ImmutableList.of(completionFactory().errorMessage(query, getMessage(e)));
+		}
 		if (values!=null) {
 			ArrayList<ICompletionProposal> completions = new ArrayList<>();
 			for (YValueHint value : values) {
 				double score = FuzzyMatcher.matchScore(query, value.getValue());
 				if (score!=0 && !value.equals(query)) {
+					int queryStart = offset-query.length();
 					DocumentEdits edits = new DocumentEdits(doc.getDocument());
-					edits.delete(offset-query.length(), offset);
+					edits.delete(queryStart, offset);
+					if (!Character.isWhitespace(doc.getChar(queryStart-1))) {
+						edits.insert(offset, " ");
+					}
 					edits.insert(offset, value.getValue());
 					completions.add(completionFactory().valueProposal(value.getValue(), query, value.getLabel(), type, score, edits, typeUtil));
 				}
@@ -160,6 +180,17 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 		return Collections.emptyList();
 	}
 
+	private String getMessage(Exception _e) {
+		Throwable e = ExceptionUtil.getDeepestCause(_e);
+
+		// If value parse exception, do not append any additional information
+		if (e instanceof ValueParseException) {
+			return ExceptionUtil.getMessageNoAppendedInformation(e);
+		} else {
+			return ExceptionUtil.getMessage(e);
+		}
+	}
+
 	@Override
 	public YamlAssistContext traverse(YamlPathSegment s) throws Exception {
 		if (s.getType()==YamlPathSegmentType.VAL_AT_KEY) {
@@ -167,9 +198,7 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 				return contextWith(s, typeUtil.getDomainType(type));
 			}
 			String key = s.toPropString();
-			SNode contextNode = getContextNode(getDocument());
-			DynamicSchemaContext dynamicCtxt = new SNodeDynamicSchemaContext(contextNode);
-			Map<String, YTypedProperty> subproperties = typeUtil.getPropertiesMap(type, dynamicCtxt);
+			Map<String, YTypedProperty> subproperties = typeUtil.getPropertiesMap(type);
 			if (subproperties!=null) {
 				return contextWith(s, getType(subproperties.get(key)));
 			}
@@ -229,11 +258,12 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 		}
 		return null;
 	}
-	
-	private DynamicSchemaContext getSchemaContext() {
+
+	protected DynamicSchemaContext getSchemaContext() {
 		try {
-			SNode contextNode = getContextNode(getDocument());
-			return new SNodeDynamicSchemaContext(contextNode);
+			SNode contextNode = getContextNode();
+			YamlPath fullContextPath = contextPath.prepend(YamlPathSegment.valueAt(documentSelector));
+			return new SNodeDynamicSchemaContext(contextNode, fullContextPath);
 		} catch (Exception e) {
 			Log.log(e);
 			return DynamicSchemaContext.NULL;
@@ -248,6 +278,6 @@ public class YTypeAssistContext extends AbstractYamlAssistContext {
 	}
 
 	private YTypedProperty getProperty(String name) {
-		return typeUtil.getPropertiesMap(getType(),  getSchemaContext()).get(name);
+		return typeUtil.getPropertiesMap(getType()).get(name);
 	}
 }

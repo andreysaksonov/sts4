@@ -1,8 +1,20 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.commons.util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.ExecutionException;
 
 /**
  * Utility methods to convert exceptions into other types of exceptions, status
@@ -21,14 +33,57 @@ public class ExceptionUtil {
 		}
 		return cause;
 	}
+	
+	/**
+	 * 
+	 * @param e
+	 * @param toLookFor type of throwable to look for in the given throwable.
+	 * @return the throwable instance of the given type, or null if nothing found.
+	 */
+	public static Throwable getThrowable(Throwable e, Class<? extends Throwable> toLookFor) {
+		if (toLookFor.isAssignableFrom(e.getClass())) {
+			return e;
+		}
+		
+		Throwable cause = e;
+		Throwable parent = e.getCause();
+		while (parent != null && parent != e) {
+			cause = parent;
+			parent = cause.getCause();
+			if (toLookFor.isAssignableFrom(cause.getClass())) {
+				return cause;
+			}
+		}
+		return null;
+	}
 
 	public static String getMessage(Throwable e) {
 		// The message of nested exception is usually more interesting than the
 		// one on top.
 		Throwable cause = getDeepestCause(e);
-		String msg = cause.getClass().getSimpleName() + ": " + cause.getMessage();
-		return msg;
+		if (cause != null) {
+			String msg = getSimpleError(cause) + ": " + cause.getMessage();
+			return msg;
+		} else {
+			return "An error occurred: " + getSimpleError(e);
+		}
 	}
+	
+	public static String getMessageNoAppendedInformation(Throwable e) {
+		Throwable deepestCause = ExceptionUtil.getDeepestCause(e);
+		String msg = deepestCause != null ? deepestCause.getMessage() : null;
+
+		if (StringUtil.hasText(msg)) {
+			return msg;
+		} else {
+			return "An error occurred: " + getSimpleError(e);
+		}
+	}
+
+	public static String getSimpleError(Throwable e) {
+		return e.getClass().getSimpleName();
+	}
+	
 
 	public static IllegalStateException notImplemented(String string) {
 		return new IllegalStateException("Not implemented: " + string);
@@ -65,4 +120,22 @@ public class ExceptionUtil {
 		return dump.toString();
 	}
 
+	/**
+	 * Convert throwables into exception try not to wrap if not needing to.
+	 */
+	public static Exception exception(Throwable cause) {
+		if (cause instanceof Exception) {
+			return (Exception)cause;
+		}
+		return new ExecutionException(cause);
+	}
+
+	public static Exception exception(String message, Throwable error) {
+		if (message != null) {
+			// Wrap only if there is an additional message
+			return new ExecutionException(message, error);
+		} else {
+			return exception(error);
+		}
+	}
 }

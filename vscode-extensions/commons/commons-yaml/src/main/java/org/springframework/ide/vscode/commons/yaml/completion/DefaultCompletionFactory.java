@@ -1,11 +1,22 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.commons.yaml.completion;
 
-import org.apache.commons.lang3.reflect.TypeUtils;
 import org.eclipse.lsp4j.CompletionItemKind;
 import org.springframework.ide.vscode.commons.languageserver.completion.DocumentEdits;
 import org.springframework.ide.vscode.commons.languageserver.completion.ICompletionProposal;
 import org.springframework.ide.vscode.commons.languageserver.completion.ScoreableProposal;
 import org.springframework.ide.vscode.commons.util.Renderable;
+import org.springframework.ide.vscode.commons.util.Renderables;
 import org.springframework.ide.vscode.commons.util.text.IDocument;
 import org.springframework.ide.vscode.commons.yaml.hover.YPropertyInfoTemplates;
 import org.springframework.ide.vscode.commons.yaml.schema.YType;
@@ -13,7 +24,9 @@ import org.springframework.ide.vscode.commons.yaml.schema.YTypeUtil;
 import org.springframework.ide.vscode.commons.yaml.schema.YTypedProperty;
 
 public class DefaultCompletionFactory implements CompletionFactory {
-	
+
+	private static final int ERROR_COMPLETION_SCORE = -10000000;
+
 	public static class BeanPropertyProposal extends ScoreableProposal {
 
 		private IDocument doc;
@@ -36,7 +49,7 @@ public class DefaultCompletionFactory implements CompletionFactory {
 			this.edits = edits;
 			this.typeUtil = typeUtil;
 		}
-		
+
 		@Override
 		public double getBaseScore() {
 			return baseScore;
@@ -67,7 +80,7 @@ public class DefaultCompletionFactory implements CompletionFactory {
 			return YPropertyInfoTemplates.createCompletionDocumentation(contextProperty, contextType, p);
 		}
 	}
-	
+
 	public class ValueProposal extends ScoreableProposal {
 
 		private String value;
@@ -107,7 +120,7 @@ public class DefaultCompletionFactory implements CompletionFactory {
 		public DocumentEdits getTextEdit() {
 			return edits;
 		}
-		
+
 		@Override
 		public String toString() {
 			return "ValueProposal("+value+")";
@@ -124,6 +137,64 @@ public class DefaultCompletionFactory implements CompletionFactory {
 		}
 	}
 
+	public static final class ErrorProposal extends ScoreableProposal {
+		private final String longMessage;
+		private String shortMessage;
+		private String filterText;
+
+		public ErrorProposal(String query, String longMessage) {
+			this.filterText = query;
+			int split = longMessage.indexOf(": ");
+			if (split>0) {
+				this.shortMessage = longMessage.substring(0, split);
+				this.longMessage = longMessage.substring(split+2);
+			} else {
+				this.longMessage = longMessage;
+				this.shortMessage = longMessage;
+			}
+		}
+
+		@Override
+		public DocumentEdits getTextEdit() {
+			return new DocumentEdits(null);
+		}
+
+		@Override
+		public String getLabel() {
+			return shortMessage;
+		}
+
+		@Override
+		public CompletionItemKind getKind() {
+			return CompletionItemKind.Text;
+		}
+
+		@Override
+		public Renderable getDocumentation() {
+			return Renderables.text(longMessage);
+		}
+
+		@Override
+		public double getBaseScore() {
+			return ERROR_COMPLETION_SCORE;
+		}
+
+		@Override
+		public String toString() {
+			return "ErrorProposal()";
+		}
+
+		@Override
+		public String getDetail() {
+			return "Error";
+		}
+
+		@Override
+		public String getFilterText() {
+			return filterText;
+		}
+	}
+
 	@Override
 	public ICompletionProposal beanProperty(IDocument doc, String contextProperty, YType contextType, String query, YTypedProperty p, double score, DocumentEdits edits, YTypeUtil typeUtil) {
 		return new BeanPropertyProposal(doc, contextProperty, contextType, query, p, score, edits, typeUtil);
@@ -134,4 +205,8 @@ public class DefaultCompletionFactory implements CompletionFactory {
 		return new ValueProposal(value, query, label, type, score, edits, typeUtil);
 	}
 
+	@Override
+	public ICompletionProposal errorMessage(String query, String longMessage) {
+		return new ErrorProposal(query, longMessage);
+	}
 }

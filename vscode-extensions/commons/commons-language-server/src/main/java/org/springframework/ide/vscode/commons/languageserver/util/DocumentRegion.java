@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.commons.languageserver.util;
 
 import java.util.ArrayList;
@@ -52,6 +63,13 @@ public class DocumentRegion implements CharSequence {
 		this.doc = doc;
 		this.start = limitRange(start, 0, doc.getLength());
 		this.end = limitRange(end, start, doc.getLength());
+	}
+
+	/**
+	 * Create {@link DocumentRegion} covering the whole document.
+	 */
+	public DocumentRegion(IDocument doc) {
+		this(doc, 0, doc.getLength());
 	}
 
 	private int limitRange(int offset, int min, int max) {

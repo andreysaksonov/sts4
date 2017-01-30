@@ -1,57 +1,37 @@
-# VS Code Language Server for Cloudfoundry Manifest Files
+# Cloud Foundry Manifest Editor for Visual Studio Code
 
-A VSCode extension and Language Server providing support for
-editing `manifest.yml` files, aka 'Cloudfoundry Deployment Manifest'.
+This extension provides basic validation, content assist and hover infos
+for editing Cloud Foundry [Manifest](https://docs.cloudfoundry.org/devguide/deploy-apps/manifest.html) Files.
 
-The manifest editor provides content assist and basic validation of
-the manifest's structure as you type. 
+## Usage
 
-# Developer notes
+The CF manifest editor automatically activates when the name of the `.yml` file you are editing, 
+matches the glob pattern: `manifest*.yml`.
 
-## Bulding and Running
+## Functionality
 
-This project consists of three pieces:
+### Validation
 
- - a vscode-extension which is a language-server client implemented in TypeScript.
- - commons-vscode: a local npm module with some utilities implemented in TypeScript.
- - a language server implemented in Java.
+As you type the manifest is parsed and checked for basic syntactic and structural correctness. Hover over
+an error marker to see an explanation.
 
-To build all these pieces you normally only need to run:
+![Linting Screenshot][linting]
 
-   npm install
+### Content assist
 
-**However, the first time you build** it might fail trying to
-find the `commons-vscode` module on npm central. Once we publish a stable 
-version of that module on npm central that will no longer be a problem. 
-Until that time, you can work around this by doing a one time manual 
-run of the `preinstall` script prior to running `npm install`:
+Having trouble remembering all the names of the attributes, and their spelling? Content assist to the
+rescue:
 
-    ./scripts/preinstall.sh
-    npm install
+![Content Assist Screenshot][ca]
 
-Now you can open the client-app in vscode. From the root of this project.
+### Documentation Hovers
 
-    code .
+Having trouble remembering exactly what the meaning of each attribute is? Hover over any attribute and 
+read its detailed documentation.
 
-To launch the language server in a vscode runtime, press F5.
+![Hover Docs Screenshot][hovers]
 
-## Debugging
 
-To debug the language server, open `lib/Main.ts` and edit to set the
-`DEBUG` option to `true`. When you laucnh the app next by pressing
-`F5` it will launch with debug options being passed to the JVM.
-
-You can then connect a 'Remote Java' Eclipse debugger on port 8000.
-
-## Packaging as a vscode extension
-
-First make sure the stuff is all built locally:
-
-     ./scripts/preinstall.sh  # only needed if this is the first build.
-     npm install
-
-Then package it:
-
-     npm run vsce-package
-
-This produces a `.vsix` file which you can install directly into vscode.
+[linting]: https://s29.postimg.org/67wu0d7yv/linting.png
+[ca]: https://s29.postimg.org/q52r9bqtz/content_assist.png
+[hovers]: https://s29.postimg.org/3rv0mipw7/hovers.png

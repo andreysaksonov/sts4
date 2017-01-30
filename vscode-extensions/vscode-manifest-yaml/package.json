@@ -1,13 +1,13 @@
 {
   "name": "vscode-manifest-yaml",
   "displayName": "Cloudfoundry Manifest YML Support",
-  "description": "Provides validation and content assist for Cloudfoundry manifest.yml files",
+  "description": "Adds linting, content assist and hoverinfo's for Cloudfoundry Deployment Manifests (a.k.a. `manifest.yml`) files.",
   "icon": "icon.png",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "Pivotal",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kdvolder/vscode-lsapi-example.git"
+    "url": "https://github.com/spring-projects/sts4.git"
   },
   "license": "EPL-1.0",
   "engines": {
@@ -24,23 +24,32 @@
     "manifest.yml"
   ],
   "activationEvents": [
-    "onLanguage:yaml"
+    "onLanguage:manifest-yaml"
   ],
-  "main": "./out/lib/Main",
   "contributes": {
-    "configuration": {
-      "type": "object",
-      "title": "Example configuration",
-      "properties": {
-        "languageServerExample.maxNumberOfProblems": {
-          "type": "number",
-          "default": 100,
-          "description": "Controls the maximum number of problems produced by the server."
-        }
+    "languages": [
+      {
+        "id": "manifest-yaml",
+        "aliases": [
+          "cloudfoundry-manifest"
+        ],
+        "filenamePatterns": [
+          "*manifest*.yml"
+        ],
+        "configuration": "./yaml-support/language-configuration.json"
       }
-    }
+    ],
+    "grammars": [{
+      "language": "manifest-yaml",
+      "scopeName": "source.yaml",
+      "path": "./yaml-support/yaml.tmLanguage"
+    }],
+    "snippets": [{
+      "language": "manifest-yaml",
+      "path": "./snippets.json"
+    }]
   },
-  "preview": true,
+  "main": "./out/lib/Main",
   "scripts": {
     "prepublish": "tsc -p .",
     "clean": "rm -fr node_modules out *.vsix",

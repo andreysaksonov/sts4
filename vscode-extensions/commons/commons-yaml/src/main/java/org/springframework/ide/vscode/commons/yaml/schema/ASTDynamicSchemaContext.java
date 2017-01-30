@@ -13,8 +13,11 @@ package org.springframework.ide.vscode.commons.yaml.schema;
 import java.util.Collections;
 import java.util.Set;
 
+import org.springframework.ide.vscode.commons.util.text.IDocument;
 import org.springframework.ide.vscode.commons.yaml.ast.NodeUtil;
+import org.springframework.ide.vscode.commons.yaml.path.YamlPath;
 import org.yaml.snakeyaml.nodes.MappingNode;
+import org.yaml.snakeyaml.nodes.Node;
 import org.yaml.snakeyaml.nodes.NodeTuple;
 
 import com.google.common.collect.ImmutableSet;
@@ -28,23 +31,35 @@ import com.google.common.collect.ImmutableSet;
 public class ASTDynamicSchemaContext extends CachingSchemaContext {
 
 	private MappingNode mapNode;
+	private IDocument doc;
+	private YamlPath path;
 
-	public ASTDynamicSchemaContext(MappingNode map) {
-		this.mapNode = map;
+	public ASTDynamicSchemaContext(IDocument doc, YamlPath path, Node node) {
+		this.doc = doc;
+		this.path = path;
+		this.mapNode = as(MappingNode.class, node);
+	}
+
+	@SuppressWarnings("unchecked")
+	private <T> T as(Class<T> klass, Node node) {
+		if (node!=null && klass.isInstance(node)) {
+			return (T) node;
+		}
+		return null;
 	}
 
 	@Override
 	protected Set<String> computeDefinedProperties() {
-		if (mapNode!=null) {
-			ImmutableSet.Builder<String> builder = ImmutableSet.builder();
-			for (NodeTuple entry : mapNode.getValue()) {
-				String key = NodeUtil.asScalar(entry.getKeyNode());
-				if (key!=null) { //key not a scalar? => something funky so skip it
-					builder.add(key);
-				}
-			}
-			return builder.build();
-		}
-		return Collections.emptySet();
+		return NodeUtil.getScalarKeys(mapNode);
+	}
+
+	@Override
+	public IDocument getDocument() {
+		return doc;
+	}
+
+	@Override
+	public YamlPath getPath() {
+		return path;
 	}
 }

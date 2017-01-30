@@ -3155,6 +3155,35 @@ public class ApplicationYamlEditorTest extends AbstractPropsEditorTest {
 
 	}
 
+	/**
+	 * TODO: Delete this tempotary test. 
+	 * This test is just one piece copied from another test to do more focussed debugging. If you find this test
+	 * in the git repo, then it was committed by accident. So feel free to delete it.
+	 */
+	@Test public void testClasspathResourceCompletionTemp() throws Exception {
+		CachingValueProvider.TIMEOUT = Duration.ofSeconds(20);
+
+		useProject(createPredefinedMavenProject("empty-boot-1.3.0-app"));
+
+		data("my.nice.resource", "org.springframework.core.io.Resource", null, "A very nice resource.");
+		data("my.nice.list", "java.util.List<org.springframework.core.io.Resource>", null, "A nice list of resources.");
+		
+		assertCompletionWithLabel(
+				"my:\n" +
+				"  nice:\n" +
+				"    list:\n"+
+				"    - classpath:<*>\n"
+				,// ==========
+				"classpath:application.yml"
+				, // =>
+				"my:\n" +
+				"  nice:\n" +
+				"    list:\n"+
+				"    - classpath:application.yml<*>\n"
+		);
+
+	}
+
 	@Test public void testClasspathResourceCompletion() throws Exception {
 		CachingValueProvider.TIMEOUT = Duration.ofSeconds(20);
 
@@ -3267,6 +3296,27 @@ public class ApplicationYamlEditorTest extends AbstractPropsEditorTest {
 				"  nice:\n" +
 				"    resource:\n"+
 				"      classpath:stuff/wordlist.txt<*>\n"
+		);
+	}
+	
+	@Test public void testCompletionsInContextWithDuplicateKey() throws Exception {
+		//See: https://www.pivotaltracker.com/story/show/135708013
+		defaultTestData();
+		
+		assertCompletions(
+				"spring:\n" + 
+				"  application:\n" + 
+				"    name: my-app\n" + 
+				"spring:\n" + 
+				"  activemq:\n" + 
+				"    broker-u<*>"
+				, // ==>
+				"spring:\n" + 
+				"  application:\n" + 
+				"    name: my-app\n" + 
+				"spring:\n" + 
+				"  activemq:\n" + 
+				"    broker-url: <*>"
 		);
 	}
 
@@ -3540,6 +3590,39 @@ public class ApplicationYamlEditorTest extends AbstractPropsEditorTest {
 		);
 		editor.assertLinkTargets("indent-output",
 				"com.fasterxml.jackson.databind.SerializationFeature.INDENT_OUTPUT"
+		);
+	}
+
+	@Test public void PT_137299017_extra_space_wth_bean_property_value_completion() throws Exception {
+		useProject(createPredefinedMavenProject("enums-boot-1.3.2-app"));
+		data("color", "demo.ColorData", null, "colorful stuff");
+		
+		assertCompletions(
+				"color:\n" +
+				"  next:<*>"
+				,  //==>
+				"color:\n" +
+				"  next: blue<*>"
+				, // ==
+				"color:\n" +
+				"  next: green<*>"
+				, // ==
+				"color:\n" +
+				"  next: red<*>"
+		);
+	}
+
+	@Test public void PT_137299017_extra_space_wth_index_property_value_completion() throws Exception {
+		defaultTestData();
+		assertCompletions(
+				"flyway:\n"+ 
+				"  enabled:<*>"
+				, // ==>
+				"flyway:\n"+ 
+				"  enabled: false<*>"
+				, // ==
+				"flyway:\n"+ 
+				"  enabled: true<*>"
 		);
 	}
 	

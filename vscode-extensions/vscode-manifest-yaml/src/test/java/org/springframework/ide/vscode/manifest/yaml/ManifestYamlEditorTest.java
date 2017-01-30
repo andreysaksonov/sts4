@@ -10,17 +10,41 @@
  *******************************************************************************/
 package org.springframework.ide.vscode.manifest.yaml;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.*;
+
+import java.io.IOException;
+import java.util.List;
+
+import org.eclipse.lsp4j.CompletionItem;
+import org.eclipse.lsp4j.Diagnostic;
+import org.eclipse.lsp4j.DiagnosticSeverity;
 import org.junit.Before;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.mockito.Mockito;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.CFServiceInstance;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.ClientRequests;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.CFClientParams;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.CFCredentials;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.ClientParamsProvider;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.NoTargetsException;
+import org.springframework.ide.vscode.commons.util.CollectionUtil;
 import org.springframework.ide.vscode.languageserver.testharness.Editor;
 import org.springframework.ide.vscode.languageserver.testharness.LanguageServerHarness;
+
+import static org.springframework.ide.vscode.languageserver.testharness.TestAsserts.*;
+
+import com.google.common.collect.ImmutableList;
 
 public class ManifestYamlEditorTest {
 
 	LanguageServerHarness harness;
+	MockCloudfoundry cloudfoundry = new MockCloudfoundry();
 
 	@Before public void setup() throws Exception {
-		harness = new LanguageServerHarness(ManifestYamlLanguageServer::new);
+		harness = new LanguageServerHarness(()-> new ManifestYamlLanguageServer(cloudfoundry.factory, cloudfoundry.paramsProvider));
 		harness.intialize(null);
 	}
 
@@ -123,6 +147,8 @@ public class ManifestYamlEditorTest {
 
 		//Using a 'composite' element where a scalar type is expected
 		editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
 				"memory:\n"+
 				"- bad sequence\n" +
 				"buildpack:\n" +
@@ -149,10 +175,10 @@ public class ManifestYamlEditorTest {
 				"  health-check-type: unhealthy"
 		);
 		editor.assertProblems(
-				"not a number|Positive Integer",
+				"not a number|NumberFormatException",
 				"notBool|boolean",
-				"1024|Memory",
-				"2048|Memory",
+				"1024|doesn't end with a valid unit of memory",
+				"2048|doesn't end with a valid unit of memory",
 				"unhealthy|Health Check Type"
 		);
 
@@ -165,9 +191,9 @@ public class ManifestYamlEditorTest {
 				"  disk_quota: -2048M\n"
 		);
 		editor.assertProblems(
-				"-3|Positive Integer",
-				"-1024M|Memory",
-				"-2048M|Memory"
+				"-3|Value must be at least 1",
+				"-1024M|Negative value is not allowed",
+				"-2048M|Negative value is not allowed"
 		);
 
 		//check that correct values are indeed accepted
@@ -376,7 +402,7 @@ public class ManifestYamlEditorTest {
 				"random-route: false<*>",
 				"random-route: true<*>"
 		);
-		
+
 		assertCompletions("health-check-type: <*>",
 				"health-check-type: none<*>",
 				"health-check-type: port<*>"
@@ -392,7 +418,7 @@ public class ManifestYamlEditorTest {
 			"applications:\n" +
 			"- buildpack: zbuildpack\n" +
 			"  domain: zdomain\n" +
-			"  name: foo\n" + 
+			"  name: foo\n" +
 			"  command: java main.java\n" +
 			"  disk_quota: 1024M\n" +
 			"  domains:\n" +
@@ -404,10 +430,10 @@ public class ManifestYamlEditorTest {
 			"  host: apppage\n" +
 			"  hosts:\n" +
 			"  - apppage2\n" +
-			"  - appage3\n" + 
+			"  - appage3\n" +
 			"  instances: 2\n" +
-			"  no-hostname: true\n" + 
-			"  no-route: true\n" + 
+			"  no-hostname: true\n" +
+			"  no-route: true\n" +
 			"  path: somepath/app.jar\n" +
 			"  random-route: true\n" +
 			"  services:\n" +
@@ -417,7 +443,7 @@ public class ManifestYamlEditorTest {
 			"  timeout: 80\n" +
 			"  health-check-type: none\n"
 		);
-		
+
 		editor.assertIsHoverRegion("memory");
 		editor.assertIsHoverRegion("inherit");
 		editor.assertIsHoverRegion("applications");
@@ -462,25 +488,413 @@ public class ManifestYamlEditorTest {
 	    editor.assertHoverContains("timeout", "The `timeout` attribute defines the number of seconds Cloud Foundry allocates for starting your application");
 	    editor.assertHoverContains("health-check-type", "Use the `health-check-type` attribute to");
 	}
-	
+
 	@Test
 	public void noHoverInfos() throws Exception {
 		Editor editor = harness.newEditor(
 		    "#comment\n" +
 			"applications:\n" +
 			"- buildpack: zbuildpack\n" +
-			"  name: foo\n" + 
+			"  name: foo\n" +
 			"  domains:\n" +
 			"  - pivotal.io\n" +
 			"  - otherdomain.org\n"
 
 		);
 		editor.assertNoHover("comment");
-		
+
 		// May fail in the future if hover support is added, but if hover support is added in the future,
 		// it is expected that these should start to fail, as right now they have no hover
 		editor.assertNoHover("pivotal.io");
 		editor.assertNoHover("otherdomain.org");
+	}
+
+	@Test
+	public void reconcileDuplicateKeys() throws Exception {
+		Editor editor = harness.newEditor(
+				"#comment\n" +
+				"applications:\n" +
+				"- buildpack: zbuildpack\n" +
+				"  name: foo\n" +
+				"  domains:\n" +
+				"  - pivotal.io\n" +
+				"  domains:\n" +
+				"  - otherdomain.org\n"
+		);
+		editor.assertProblems(
+				"domains|Duplicate key",
+				"domains|Duplicate key"
+		);
+	}
+
+	@Test public void PT_137299017_extra_space_with_completion() throws Exception {
+		assertCompletions(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  random-route:<*>"
+				, // ==>
+				"applications:\n" +
+				"- name: foo\n" +
+				"  random-route: false<*>"
+				, // --
+				"applications:\n" +
+				"- name: foo\n" +
+				"  random-route: true<*>"
+		);
+	}
+
+	@Test public void PT_137722057_extra_space_with_completion() throws Exception {
+		assertCompletions(
+				"applications:\n" +
+				"-<*>",
+				// ===>
+				"applications:\n" +
+				"- buildpack: <*>",
+				// ---------------
+				"applications:\n" +
+				"- command: <*>",
+				// ---------------
+				"applications:\n" +
+				"- disk_quota: <*>",
+				// ---------------
+				"applications:\n" +
+				"- domain: <*>",
+				// ---------------
+				"applications:\n" +
+				"- domains:\n"+
+				"  - <*>",
+				// ---------------
+				"applications:\n" +
+				"- env:\n"+
+				"    <*>",
+				// ---------------
+				"applications:\n" +
+				"- health-check-type: <*>",
+				// ---------------
+				"applications:\n" +
+				"- host: <*>",
+				// ---------------
+				"applications:\n" +
+				"- hosts:\n"+
+				"  - <*>",
+				// ---------------
+				"applications:\n" +
+				"- instances: <*>",
+				// ---------------
+				"applications:\n" +
+				"- memory: <*>",
+				// ---------------
+				"applications:\n" +
+				"- name: <*>",
+				// ---------------
+				"applications:\n" +
+				"- no-hostname: <*>",
+				// ---------------
+				"applications:\n" +
+				"- no-route: <*>",
+				// ---------------
+				"applications:\n" +
+				"- path: <*>",
+				// ---------------
+				"applications:\n" +
+				"- random-route: <*>",
+				// ---------------
+				"applications:\n" +
+				"- services:\n"+
+				"  - <*>",
+				// ---------------
+				"applications:\n" +
+				"- stack: <*>",
+				// ---------------
+				"applications:\n" +
+				"- timeout: <*>"
+		);
+
+		//Second example
+		assertCompletions(
+				"applications:\n" +
+				"-<*>\n" +
+				"- name: test"
+				, // ==>
+				"applications:\n" +
+				"- buildpack: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- command: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- disk_quota: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- domain: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- domains:\n" +
+				"  - <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- env:\n" +
+				"    <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- health-check-type: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- host: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- hosts:\n" +
+				"  - <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- instances: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- memory: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- name: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- no-hostname: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- no-route: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- path: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- random-route: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- services:\n" +
+				"  - <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- stack: <*>\n" +
+				"- name: test"
+				, // ---------------------
+				"applications:\n" +
+				"- timeout: <*>\n" +
+				"- name: test"
+		);
+
+	}
+
+	@Test public void numberOfYamlDocumentsShouldBeExactlyOne() throws Exception {
+		Editor editor;
+
+		{
+			//when the file is empty (there is no AST at all)
+			editor = harness.newEditor("#Emptyfile");
+			editor.assertProblems("#Emptyfile|'Cloudfoundry Manifest' must have at least some Yaml content");
+		}
+
+		{
+			//when the file has too many documents... then highlight the '---' marker introducing the first document
+			//exceeding the range.
+			editor = harness.newEditor(
+					"---\n" +
+					"applications:\n"+
+					"- name: foo\n" +
+					"  bad-one: xx\n" +
+					"---\n" +
+					"applications:\n"+
+					"- name: foo\n" +
+					"  bad-two: xx"
+			);
+			editor.assertProblems(
+				"bad-one|Unknown property", //should still reconcile the documents even thought there's too many of them!
+				"---|'Cloudfoundry Manifest' should not have more than 1 Yaml Document",
+				"bad-two|Unknown property" //should still reconcile the documents even thought there's too many of them!
+			);
+			//also check the location of the marker since there are two occurrences of '---' in the editor text.
+			Diagnostic problem = editor.assertProblem("---");
+			assertTrue(problem.getRange().getStart().getLine()>1);
+		}
+
+		{
+			// Also check that looking for the '---' isn't confused by extra whitespace
+			editor = harness.newEditor(
+					"---\n" +
+					"applications:\n"+
+					"- name: foo\n" +
+					"  \n"+
+					"---\n" +
+					"   \n"+
+					"applications:\n"+
+					"- name: foo\n"
+			);
+			editor.assertProblems(
+				"---|'Cloudfoundry Manifest' should not have more than 1 Yaml Document"
+			);
+			//also check the location of the marker since there are two occurrences of '---' in the editor text.
+			Diagnostic problem = editor.assertProblem("---");
+			assertTrue(problem.getRange().getStart().getLine()>1);
+		}
+
+	}
+
+	@Test public void namePropertyIsRequired() throws Exception {
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: this-is-good\n" +
+				"- memory: 1G\n" +
+				"- name:\n"
+		);
+		editor.assertProblems(
+				"memory: 1G|Property 'name' is required",
+				"|should not be empty"
+		);
+	}
+
+	@Test
+	public void noReconcileErrorsWhenCFFactoryThrows() throws Exception {
+		reset(cloudfoundry.factory);
+		when(cloudfoundry.factory.getClient(any(), any())).thenThrow(new IOException("Can't create a client!"));
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  buildpack: bad-buildpack\n" +
+				"  services:\n" +
+				"  - bad-service\n" +
+				"  bogus: bad" //a token error to make sure reconciler is actually running!
+		);
+		editor.assertProblems("bogus|Unknown property");
+	}
+
+	@Test
+	public void noReconcileErrorsWhenClientThrows() throws Exception {
+		ClientRequests cfClient = cloudfoundry.client;
+		when(cfClient.getBuildpacks()).thenThrow(new IOException("Can't get buildpacks"));
+		when(cfClient.getServices()).thenThrow(new IOException("Can't get services"));
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  buildpack: bad-buildpack\n" +
+				"  services:\n" +
+				"  - bad-service\n" +
+				"  bogus: bad" //a token error to make sure reconciler is actually running!
+		);
+		editor.assertProblems("bogus|Unknown property");
+	}
+
+	@Test
+	public void reconcileCFService() throws Exception {
+		ClientRequests cfClient = cloudfoundry.client;
+		CFServiceInstance service = Mockito.mock(CFServiceInstance.class);
+		when(service.getName()).thenReturn("myservice");
+		when(cfClient.getServices()).thenReturn(ImmutableList.of(service));
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  services:\n" +
+				"  - myservice\n"
+
+		);
+		// Should have no problems
+		editor.assertProblems(/*none*/);
+	}
+
+	@Test
+	public void reconcileShowsWarningOnUnknownService() throws Exception {
+		ClientRequests cfClient = cloudfoundry.client;
+		CFServiceInstance service = Mockito.mock(CFServiceInstance.class);
+		when(service.getName()).thenReturn("myservice");
+		when(cfClient.getServices()).thenReturn(ImmutableList.of(service));
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  services:\n" +
+				"  - bad-service\n"
+
+		);
+		editor.assertProblems("bad-service|There is no service instance called");
+
+		Diagnostic problem = editor.assertProblem("bad-service");
+
+		assertEquals(DiagnosticSeverity.Warning, problem.getSeverity());
+	}
+
+	@Test
+	public void reconcileShowsWarningOnNoService() throws Exception {
+		ClientRequests cfClient = cloudfoundry.client;
+		when(cfClient.getServices()).thenReturn(ImmutableList.of());
+		Editor editor = harness.newEditor(
+				"applications:\n" +
+				"- name: foo\n" +
+				"  services:\n" +
+				"  - bad-service\n");
+		editor.assertProblems("bad-service|There is no service instance called");
+
+		Diagnostic problem = editor.assertProblem("bad-service");
+
+		assertEquals(DiagnosticSeverity.Warning, problem.getSeverity());
+	}
+
+	@Test
+	public void servicesContentAssistShowErrorMessageWhenNotLoggedIn() throws Exception {
+		reset(cloudfoundry.paramsProvider);
+
+		when(cloudfoundry.paramsProvider.getParams()).thenThrow(new NoTargetsException("No Cloudfoundry Targets: Please login"));
+
+		String textBefore =
+				"applications:\n" +
+				"- name: foo\n" +
+				"  services:\n" +
+				"  - <*>";
+		Editor editor = harness.newEditor(
+				textBefore
+		);
+
+		//Applying the single completion should do nothing in the editor:
+		editor.assertCompletions(textBefore);
+
+		//The message from the exception should appear in the 'doc string':
+		editor.assertCompletionDetails("No Cloudfoundry Targets", "Error", "Please login");
+
+	}
+
+	@Test
+	public void servicesContentAssistShowErrorMessageWhenNotLoggedIn_nonEmptyQueryString() throws Exception {
+		reset(cloudfoundry.paramsProvider);
+
+		when(cloudfoundry.paramsProvider.getParams()).thenThrow(new NoTargetsException("No Cloudfoundry Targets: Please login"));
+
+		String textBefore =
+				"applications:\n" +
+				"- name: foo\n" +
+				"  services:\n" +
+				"  - something<*>";
+		Editor editor = harness.newEditor(
+				textBefore
+		);
+
+		//Applying the single completion should do nothing in the editor:
+		editor.assertCompletions(textBefore);
+
+		//The message from the exception should appear in the 'doc string':
+		CompletionItem completion = editor.assertCompletionDetails("No Cloudfoundry Targets", "Error", "Please login");
+		//query string should match the 'filter text' otherwise vscode will filter the item and it will be gone!
+		assertEquals("something", completion.getFilterText());
 	}
 
 	//////////////////////////////////////////////////////////////////////////////
@@ -489,4 +903,5 @@ public class ManifestYamlEditorTest {
 		Editor editor = harness.newEditor(textBefore);
 		editor.assertCompletions(textAfter);
 	}
+
 }

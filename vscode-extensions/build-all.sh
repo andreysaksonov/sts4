@@ -9,7 +9,7 @@ cd ${base_dir}/commons-vscode
 npm install
 
 cd $base_dir
-for i in vscode-boot-properties vscode-manifest-yaml vscode-concourse; do
+for i in vscode-boot-properties vscode-manifest-yaml vscode-concourse vscode-boot-java; do
     cd ${base_dir}/${i}
     echo "***************************************************************************************"
     echo "***************************************************************************************"
@@ -23,7 +23,7 @@ for i in vscode-boot-properties vscode-manifest-yaml vscode-concourse; do
 
     base_version=`jq -r .version package.json`
     qualified_version=${base_version}-${timestamp}
-
+    echo -e "\n\n*Version: ${qualified_version}*" >> README.md
     npm version ${qualified_version}
     npm install
     npm run vsce-package

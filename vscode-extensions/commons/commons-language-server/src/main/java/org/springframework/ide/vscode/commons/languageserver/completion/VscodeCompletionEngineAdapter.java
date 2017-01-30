@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.commons.languageserver.completion;
 
 import java.util.ArrayList;
@@ -54,7 +65,7 @@ public class VscodeCompletionEngineAdapter implements VscodeCompletionEngine {
 
 	private Mono<CompletionList> getCompletionsMono(TextDocumentPositionParams params) {
 		SimpleTextDocumentService documents = server.getTextDocumentService();
-		TextDocument doc = documents.get(params);
+		TextDocument doc = documents.get(params).copy();
 		if (doc!=null) {
 			return Mono.fromCallable(() -> {
 				//TODO: This callable is a 'big lump of work' so can't be canceled in pieces.
@@ -94,7 +105,7 @@ public class VscodeCompletionEngineAdapter implements VscodeCompletionEngine {
 		item.setLabel(completion.getLabel());
 		item.setKind(completion.getKind());
 		item.setSortText(sortkeys.next());
-		item.setFilterText(completion.getLabel());
+		item.setFilterText(completion.getFilterText());
 		item.setDetail(completion.getDetail());
 		item.setDocumentation(toMarkdown(completion.getDocumentation()));
 		adaptEdits(item, doc, completion.getTextEdit());
@@ -118,18 +129,24 @@ public class VscodeCompletionEngineAdapter implements VscodeCompletionEngine {
 			edits.apply(newDoc);
 			TextEdit vscodeEdit = new TextEdit();
 			vscodeEdit.setRange(doc.toRange(replaceEdit.start, replaceEdit.end-replaceEdit.start));
-			vscodeEdit.setNewText(vscodeIndentFix(vscodeEdit.getRange().getStart(), replaceEdit.newText));
+			vscodeEdit.setNewText(vscodeIndentFix(doc, vscodeEdit.getRange().getStart(), replaceEdit.newText));
 			//TODO: cursor offset within newText? for now we assume its always at the end.
 			item.setTextEdit(vscodeEdit);
 		}
 	}
 
-	private String vscodeIndentFix(Position start, String newText) {
+	private String vscodeIndentFix(TextDocument doc, Position start, String newText) {
 		//Vscode applies some magic indent to a multi-line edit text. We do everything ourself so we have adjust for the magic
 		// and do some kind of 'inverse magic' here.
-		int vscodeMagicIndent = start.getCharacter();
-		return StringUtil.stripIndentation(vscodeMagicIndent, newText);
+		//See here: https://github.com/Microsoft/language-server-protocol/issues/83
+		int referenceLine = start.getLine();
+		int referenceLineIndent = doc.getLineIndentation(referenceLine);
+		int vscodeMagicIndent = Math.min(start.getCharacter(), referenceLineIndent);
+		return vscodeMagicIndent>0
+				? StringUtil.stripIndentation(vscodeMagicIndent, newText)
+				: newText;
 	}
+
 
 	@Override
 	public CompletableFuture<CompletionItem> resolveCompletion(CompletionItem unresolved) {

@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.commons.languageserver.util;
 
 import java.util.ArrayList;
@@ -42,10 +53,10 @@ import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.eclipse.lsp4j.services.LanguageClient;
 import org.eclipse.lsp4j.services.TextDocumentService;
+import org.springframework.ide.vscode.commons.languageserver.LanguageIds;
 import org.springframework.ide.vscode.commons.util.Assert;
 import org.springframework.ide.vscode.commons.util.BadLocationException;
 import org.springframework.ide.vscode.commons.util.ExceptionUtil;
-import org.springframework.ide.vscode.commons.util.Futures;
 import org.springframework.ide.vscode.commons.util.text.TextDocument;
 
 import com.google.common.collect.ImmutableList;
@@ -60,6 +71,8 @@ public class SimpleTextDocumentService implements TextDocumentService {
 	private CompletionHandler completionHandler = null;
 	private CompletionResolveHandler completionResolveHandler = null;
 	private HoverHandler hoverHandler = null;
+
+	private DefinitionHandler definitionHandler;
 
 	public SimpleTextDocumentService(SimpleLanguageServer server) {
 		this.server = server;
@@ -80,6 +93,11 @@ public class SimpleTextDocumentService implements TextDocumentService {
 		this.completionResolveHandler = h;
 	}
 
+	public synchronized void onDefinition(DefinitionHandler h) {
+		Assert.isNull("A defintion handler is already set, multiple handlers not supported yet", definitionHandler);
+		this.definitionHandler = h;
+	}
+
 	/**
 	 * Gets all documents this service is tracking, generally these are the documents that have been opened / changed,
 	 * and not yet closed.
@@ -93,9 +111,9 @@ public class SimpleTextDocumentService implements TextDocumentService {
 		try {
 			VersionedTextDocumentIdentifier docId = params.getTextDocument();
 			String url = docId.getUri();
-			LOG.info("didChange: "+url);
+			//LOG.info("didChange: "+url);
 			if (url!=null) {
-				TextDocument doc = getOrCreateDocument(url);
+				TextDocument doc = getDocument(url);
 				for (TextDocumentContentChangeEvent change : params.getContentChanges()) {
 					doc.apply(change);
 					didChangeContent(doc, change);
@@ -108,7 +126,7 @@ public class SimpleTextDocumentService implements TextDocumentService {
 
 	@Override
 	public void didOpen(DidOpenTextDocumentParams params) {
-		LOG.info("didOpen: "+params.getUri());
+		//LOG.info("didOpen: "+params.getUri());
 		//Example message:
 		//{
 		//   "jsonrpc":"2.0",
@@ -123,9 +141,10 @@ public class SimpleTextDocumentService implements TextDocumentService {
 		//   }
 		//}
 		String url = params.getTextDocument().getUri();
+		String languageId = params.getTextDocument().getLanguageId();
 		if (url!=null) {
 			String text = params.getTextDocument().getText();
-			TextDocument doc = getOrCreateDocument(url);
+			TextDocument doc = createDocument(url, languageId);
 			doc.setText(text);
 			TextDocumentContentChangeEvent change = new TextDocumentContentChangeEvent() {
 				@Override
@@ -150,13 +169,12 @@ public class SimpleTextDocumentService implements TextDocumentService {
 
 	@Override
 	public void didClose(DidCloseTextDocumentParams params) {
-		LOG.info("didClose: "+params.getTextDocument().getUri());
+		//LOG.info("didClose: "+params.getTextDocument().getUri());
 		String url = params.getTextDocument().getUri();
 		if (url!=null) {
 			documents.remove(url);
 		}
 	}
-
 
 	void didChangeContent(TextDocument doc, TextDocumentContentChangeEvent change) {
 		documentChangeListeners.fire(new TextDocumentContentChange(doc, change));
@@ -166,11 +184,21 @@ public class SimpleTextDocumentService implements TextDocumentService {
 		documentChangeListeners.add(l);
 	}
 
-	private synchronized TextDocument getOrCreateDocument(String url) {
+	private synchronized TextDocument getDocument(String url) {
 		TextDocument doc = documents.get(url);
 		if (doc==null) {
-			documents.put(url, doc = new TextDocument(url));
+			LOG.warning("Trying to get document ["+url+"] but it did not exists. Creating it with language-id 'plaintext'");
+			doc = createDocument(url, LanguageIds.PLAINTEXT);
 		}
+		return doc;
+	}
+
+	private synchronized TextDocument createDocument(String url, String languageId) {
+		if (documents.get(url)!=null) {
+			LOG.warning("Creating document ["+url+"] but it already exists. Existing document discarded!");
+		}
+		TextDocument doc = new TextDocument(url, languageId);
+		documents.put(url, doc);
 		return doc;
 	}
 
@@ -202,62 +230,68 @@ public class SimpleTextDocumentService implements TextDocumentService {
 		if (h!=null) {
 			return hoverHandler.handle(position);
 		}
-		return Futures.of(null);
+		return CompletableFuture.completedFuture(null);
 	}
 
 	@Override
 	public CompletableFuture<SignatureHelp> signatureHelp(TextDocumentPositionParams position) {
-		return Futures.of(null);
+		return CompletableFuture.completedFuture(null);
 	}
 
+	@SuppressWarnings({ "unchecked"})
 	@Override
 	public CompletableFuture<List<? extends Location>> definition(TextDocumentPositionParams position) {
-		return Futures.of(Collections.emptyList());
+		DefinitionHandler h = this.definitionHandler;
+		if (h!=null) {
+			Object r = h.handle(position); //YUCK!
+			return (CompletableFuture<List<? extends Location>>) r;
+		}
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends SymbolInformation>> documentSymbol(DocumentSymbolParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends Command>> codeAction(CodeActionParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends CodeLens>> codeLens(CodeLensParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<CodeLens> resolveCodeLens(CodeLens unresolved) {
-		return Futures.of(null);
+		return CompletableFuture.completedFuture(null);
 	}
 
 	@Override
 	public CompletableFuture<List<? extends TextEdit>> formatting(DocumentFormattingParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends TextEdit>> rangeFormatting(DocumentRangeFormattingParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<List<? extends TextEdit>> onTypeFormatting(DocumentOnTypeFormattingParams params) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
 
 	@Override
 	public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
-		return Futures.of(null);
+		return CompletableFuture.completedFuture(null);
 	}
 
 	@Override
@@ -280,7 +314,6 @@ public class SimpleTextDocumentService implements TextDocumentService {
 
 	@Override
 	public CompletableFuture<List<? extends DocumentHighlight>> documentHighlight(TextDocumentPositionParams position) {
-		return Futures.of(Collections.emptyList());
+		return CompletableFuture.completedFuture(Collections.emptyList());
 	}
-
 }

@@ -11,14 +11,6 @@ import * as ChildProcess from 'child_process';
 import {LanguageClient, LanguageClientOptions, SettingMonitor, ServerOptions, StreamInfo} from 'vscode-languageclient';
 import {TextDocument, OutputChannel} from 'vscode';
 
-var DEBUG = false;
-const DEBUG_ARG = '-agentlib:jdwp=transport=dt_socket,server=y,address=8000,suspend=y';
-    //If DEBUG is falsy then
-    //   we launch from the 'fat jar' (which has to be built by running mvn package)
-    //if DEBUG is truthy then
-    //   - we launch the Java project directly from the classes folder produced by Eclipse JDT compiler
-    //   - we add DEBUG_ARG to the launch so that remote debugger can attach on port 8000
-
 var log_output : OutputChannel = null;
 
 function log(msg : string) {
@@ -37,8 +29,9 @@ function error(msg : string) {
 export function activate(context: VSCode.ExtensionContext) {
     let options : commons.ActivatorOptions = {
         DEBUG : false,
+        CONNECT_TO_LS: false,
         extensionId: 'vscode-manifest-yaml',
-        fatJarFile: 'target/vscode-manifest-yaml-0.0.1-SNAPSHOT.jar',
+        fatJarFile: 'target/vscode-manifest-yaml-0.0.2-SNAPSHOT.jar',
         clientOptions: {
             // HACK!!! documentSelector only takes string|string[] where string is language id, but DocumentFilter object is passed instead
             // Reasons:
@@ -48,7 +41,8 @@ export function activate(context: VSCode.ExtensionContext) {
             // events pass on to Language Server only for documents for which function passed via textDocumentFilter property return true
 
             // TODO: Remove <any> cast ones https://github.com/Microsoft/vscode-languageserver-node/issues/9 is resolved
-            documentSelector: [ <any> {language: 'yaml', pattern: '**/manifest*.yml'}],
+            documentSelector: ["manifest-yaml"],
+//            documentSelector: [ <any> {language: 'yaml', pattern: '**/manifest*.yml'}],
             synchronize: {
                 // TODO: Remove textDocumentFilter property once https://github.com/Microsoft/vscode-languageserver-node/issues/9 is resolved
                 textDocumentFilter: function(textDocument : TextDocument) : boolean {

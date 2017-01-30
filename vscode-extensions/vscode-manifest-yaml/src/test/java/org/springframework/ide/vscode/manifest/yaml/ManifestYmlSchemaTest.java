@@ -1,4 +1,3 @@
-package org.springframework.ide.vscode.manifest.yaml;
 /*******************************************************************************
  * Copyright (c) 2015, 2016 Pivotal, Inc.
  * All rights reserved. This program and the accompanying materials
@@ -9,7 +8,7 @@ package org.springframework.ide.vscode.manifest.yaml;
  * Contributors:
  *     Pivotal, Inc. - initial API and implementation
  *******************************************************************************/
-
+package org.springframework.ide.vscode.manifest.yaml;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
@@ -22,7 +21,7 @@ import org.junit.Test;
 import org.springframework.ide.vscode.commons.util.Renderables;
 import org.springframework.ide.vscode.commons.util.StringUtil;
 import org.springframework.ide.vscode.commons.yaml.schema.YTypedProperty;
-import org.springframework.ide.vscode.commons.yaml.schema.YTypeFactory.YBeanType;
+import org.springframework.ide.vscode.commons.yaml.schema.YTypeFactory.AbstractType;
 import org.springframework.ide.vscode.commons.yaml.schema.YTypeFactory.YSeqType;
 import org.springframework.ide.vscode.manifest.yaml.ManifestYmlSchema;
 
@@ -82,7 +81,7 @@ public class ManifestYmlSchemaTest {
 			"timeout"
 	};
 
-	ManifestYmlSchema schema = new ManifestYmlSchema(null);
+	ManifestYmlSchema schema = new ManifestYmlSchema(null, null);
 
 	@Test
 	public void toplevelProperties() throws Exception {
@@ -132,7 +131,7 @@ public class ManifestYmlSchemaTest {
 
 	private List<YTypedProperty> getNestedProps() {
 		YSeqType applications = (YSeqType) schema.getTopLevelType().getPropertiesMap().get("applications").getType();
-		YBeanType application = (YBeanType) applications.getDomainType();
+		AbstractType application = (AbstractType) applications.getDomainType();
 		return application.getProperties();
 	}
 

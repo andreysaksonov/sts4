@@ -12,6 +12,9 @@ package org.springframework.ide.vscode.commons.yaml.schema;
 
 import java.util.Set;
 
+import org.springframework.ide.vscode.commons.util.text.IDocument;
+import org.springframework.ide.vscode.commons.yaml.path.YamlPath;
+
 import com.google.common.collect.ImmutableSet;
 
 /**
@@ -31,6 +34,17 @@ public interface DynamicSchemaContext {
 		public Set<String> getDefinedProperties() {
 			return ImmutableSet.of();
 		}
+
+		@Override
+		public IDocument getDocument() {
+			return null;
+		}
+
+		@Override
+		public YamlPath getPath() {
+			return null;
+		}
+		
 	};
 
 	/**
@@ -45,6 +59,17 @@ public interface DynamicSchemaContext {
 	 * properties are defined in the surrounding object.
 	 */
 	Set<String> getDefinedProperties();
+	
+	/**
+	 * Returns the IDocument the current context is in. This allows for some 'schemas' to have
+	 * arbitrarily complex analysis of anyhting in the IDocument or even documents related
+	 * to it based on its uri.
+	 */
+	IDocument getDocument();
 
+	/**
+	 * Returns the yamlpath leading to the current node.
+	 */
+	YamlPath getPath();
 
 }

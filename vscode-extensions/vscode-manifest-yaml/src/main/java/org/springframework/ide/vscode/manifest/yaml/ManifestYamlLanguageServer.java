@@ -1,12 +1,27 @@
+/*******************************************************************************
+ * Copyright (c) 2016, 2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
 package org.springframework.ide.vscode.manifest.yaml;
 
 import java.util.Collection;
-
-import javax.inject.Provider;
+import java.util.concurrent.Callable;
 
 import org.eclipse.lsp4j.CompletionOptions;
 import org.eclipse.lsp4j.ServerCapabilities;
 import org.eclipse.lsp4j.TextDocumentSyncKind;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.ClientTimeouts;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.CloudFoundryClientFactory;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.CFTargetCache;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.CfCliParamsProvider;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.cftarget.ClientParamsProvider;
+import org.springframework.ide.vscode.commons.cloudfoundry.client.v2.DefaultCloudFoundryClientFactoryV2;
 import org.springframework.ide.vscode.commons.languageserver.completion.VscodeCompletionEngine;
 import org.springframework.ide.vscode.commons.languageserver.completion.VscodeCompletionEngineAdapter;
 import org.springframework.ide.vscode.commons.languageserver.hover.HoverInfoProvider;
@@ -28,20 +43,30 @@ import org.springframework.ide.vscode.commons.yaml.schema.YamlSchema;
 import org.springframework.ide.vscode.commons.yaml.structure.YamlStructureProvider;
 import org.yaml.snakeyaml.Yaml;
 
-import com.google.common.collect.ImmutableList;
-
 public class ManifestYamlLanguageServer extends SimpleLanguageServer {
 
-	private static final Provider<Collection<YValueHint>> NO_BUILDPACKS = () -> ImmutableList.of();
-	
-	private Yaml yaml = new Yaml();
-	private YamlSchema schema = new ManifestYmlSchema(NO_BUILDPACKS);
 
-	
+	private Yaml yaml = new Yaml();
+	private YamlSchema schema;
+	private CFTargetCache cfTargetCache;
+	private final CloudFoundryClientFactory cfClientFactory;
+	private final ClientParamsProvider cfParamsProvider;
+
 	public ManifestYamlLanguageServer() {
+		this(DefaultCloudFoundryClientFactoryV2.INSTANCE, new CfCliParamsProvider());
+	}
+
+	public ManifestYamlLanguageServer(CloudFoundryClientFactory cfClientFactory, ClientParamsProvider cfParamsProvider) {
+		this.cfClientFactory = cfClientFactory;
+		this.cfParamsProvider=cfParamsProvider;
 		SimpleTextDocumentService documents = getTextDocumentService();
-		
+
 		YamlASTProvider parser = new YamlParser(yaml);
+
+		Callable<Collection<YValueHint>> buildPacksProvider = getBuildpacksProvider();
+		Callable<Collection<YValueHint>> servicesProvider = getServicesProvider();
+
+		schema = new ManifestYmlSchema(buildPacksProvider, servicesProvider);
 
 		YamlStructureProvider structureProvider = YamlStructureProvider.DEFAULT;
 		YamlAssistContextProvider contextProvider = new SchemaBasedYamlAssistContextProvider(schema);
@@ -56,7 +81,7 @@ public class ManifestYamlLanguageServer extends SimpleLanguageServer {
 			TextDocument doc = params.getDocument();
 			validateWith(doc, engine);
 		});
-		
+
 //		workspace.onDidChangeConfiguraton(settings -> {
 //			System.out.println("Config changed: "+params);
 //			Integer val = settings.getInt("languageServerExample", "maxNumberOfProblems");
@@ -67,24 +92,40 @@ public class ManifestYamlLanguageServer extends SimpleLanguageServer {
 //				}
 //			}
 //		});
-		
+
 		documents.onCompletion(completionEngine::getCompletions);
 		documents.onCompletionResolve(completionEngine::resolveCompletion);
 		documents.onHover(hoverEngine ::getHover);
 	}
 
-	
+	private CFTargetCache getCfTargetCache() {
+		if (cfTargetCache == null) {
+			ClientParamsProvider paramsProvider = cfParamsProvider;
+			CloudFoundryClientFactory clientFactory = cfClientFactory;
+			cfTargetCache = new CFTargetCache(paramsProvider, clientFactory, new ClientTimeouts());
+		}
+		return cfTargetCache;
+	}
+
+	private Callable<Collection<YValueHint>> getBuildpacksProvider() {
+		return new ManifestYamlCFBuildpacksProvider(getCfTargetCache());
+	}
+
+	private Callable<Collection<YValueHint>> getServicesProvider() {
+		return new ManifestYamlCFServicesProvider(getCfTargetCache());
+	}
+
 	@Override
 	protected ServerCapabilities getServerCapabilities() {
 		ServerCapabilities c = new ServerCapabilities();
-		
+
 		c.setTextDocumentSync(TextDocumentSyncKind.Incremental);
 		c.setHoverProvider(true);
-		
+
 		CompletionOptions completionProvider = new CompletionOptions();
 		completionProvider.setResolveProvider(false);
 		c.setCompletionProvider(completionProvider);
-		
+
 		return c;
 	}
 }

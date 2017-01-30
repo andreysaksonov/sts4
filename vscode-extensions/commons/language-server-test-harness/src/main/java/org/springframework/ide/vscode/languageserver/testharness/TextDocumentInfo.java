@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.languageserver.testharness;
 
 import java.util.ArrayList;
@@ -129,6 +140,26 @@ public class TextDocumentInfo {
 		TextDocumentIdentifier id = new TextDocumentIdentifier();
 		id.setUri(getUri());
 		return id;
+	}
+
+	public String getLineIndentString(int line) {
+		int start = startOfLine(line);
+		int scan = start;
+		char c = getSafeChar(scan);
+		StringBuilder indentStr = new StringBuilder();
+		while (c==' '|| c=='\t') {
+			indentStr.append(c);
+			c = getSafeChar(++scan);
+		}
+		return indentStr.toString();
+	}
+
+	private char getSafeChar(int pos) {
+		String text = getText();
+		if (pos>0 && pos<text.length()) {
+			return text.charAt(pos);
+		}
+		return 0;
 	}
 
 }

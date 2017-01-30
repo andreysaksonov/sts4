@@ -1,3 +1,14 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.languageserver.testharness;
 
 import static org.junit.Assert.assertEquals;
@@ -27,6 +38,7 @@ import org.eclipse.lsp4j.DidOpenTextDocumentParams;
 import org.eclipse.lsp4j.Hover;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.InitializeResult;
+import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.MessageParams;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
@@ -39,6 +51,7 @@ import org.eclipse.lsp4j.TextDocumentSyncKind;
 import org.eclipse.lsp4j.VersionedTextDocumentIdentifier;
 import org.eclipse.lsp4j.services.LanguageClientAware;
 import org.eclipse.lsp4j.services.LanguageServer;
+import org.springframework.ide.vscode.commons.languageserver.LanguageIds;
 import org.springframework.ide.vscode.commons.languageserver.ProgressParams;
 import org.springframework.ide.vscode.commons.languageserver.STS4LanguageClient;
 
@@ -49,6 +62,7 @@ public class LanguageServerHarness {
 	private Random random = new Random();
 
 	private Callable<? extends LanguageServer> factory;
+	private String defaultLanguageId;
 
 	private LanguageServer server;
 
@@ -57,27 +71,33 @@ public class LanguageServerHarness {
 	private Map<String,TextDocumentInfo> documents = new HashMap<>();
 	private Map<String, PublishDiagnosticsParams> diagnostics = new HashMap<>();
 
-	public LanguageServerHarness(Callable<? extends LanguageServer> factory) throws Exception {
+
+	public LanguageServerHarness(Callable<? extends LanguageServer> factory, String defaultLanguageId) {
 		this.factory = factory;
+		this.defaultLanguageId = defaultLanguageId;
 	}
 
-	public synchronized TextDocumentInfo getOrReadFile(File file) throws Exception {
+	public LanguageServerHarness(Callable<? extends LanguageServer> factory) throws Exception {
+		this(factory, LanguageIds.PLAINTEXT);
+	}
+
+	public synchronized TextDocumentInfo getOrReadFile(File file, String languageId) throws Exception {
 		String uri = file.toURI().toString();
 		TextDocumentInfo d = documents.get(uri);
 		if (d==null) {
-			documents.put(uri, d = readFile(file));
+			documents.put(uri, d = readFile(file, languageId));
 		}
 		return d;
 	}
 
-	public TextDocumentInfo readFile(File file) throws Exception {
+	public TextDocumentInfo readFile(File file, String languageId) throws Exception {
 		byte[] encoded = Files.readAllBytes(file.toPath());
 		String content = new String(encoded, getEncoding());
 		TextDocumentItem document = new TextDocumentItem();
 		document.setText(content);
 		document.setUri(file.toURI().toString());
 		document.setVersion(getFirstVersion());
-		document.setLanguageId(getLanguageId());
+		document.setLanguageId(languageId);
 		return new TextDocumentInfo(document);
 	}
 
@@ -96,8 +116,8 @@ public class LanguageServerHarness {
 		return Charset.forName("utf8");
 	}
 
-	protected String getLanguageId() {
-		return "plaintext";
+	protected String getDefaultLanguageId() {
+		return defaultLanguageId;
 	}
 
 	protected String getFileExtension() {
@@ -162,16 +182,14 @@ public class LanguageServerHarness {
 	public TextDocumentInfo openDocument(TextDocumentInfo documentInfo) throws Exception {
 		DidOpenTextDocumentParams didOpen = new DidOpenTextDocumentParams();
 		didOpen.setTextDocument(documentInfo.getDocument());
-		didOpen.setText(documentInfo.getText());
-		didOpen.setUri(documentInfo.getUri());
 		if (server!=null) {
 			server.getTextDocumentService().didOpen(didOpen);
 		}
 		return documentInfo;
 	}
 
-	public TextDocumentInfo openDocument(File file) throws Exception {
-		return openDocument(getOrReadFile(file));
+	public TextDocumentInfo openDocument(File file, String languageId) throws Exception {
+		return openDocument(getOrReadFile(file, languageId));
 	}
 
 	public synchronized TextDocumentInfo changeDocument(String uri, int start, int end, String replaceText) {
@@ -309,12 +327,16 @@ public class LanguageServerHarness {
 	}
 
 	public Editor newEditor(String contents) throws Exception {
-		return new Editor(this, contents);
+		return new Editor(this, contents, getDefaultLanguageId());
 	}
 
-	public synchronized TextDocumentInfo createWorkingCopy(String contents) throws Exception {
+	public Editor newEditor(String languageId, String contents) throws Exception {
+		return new Editor(this, contents, languageId);
+	}
+
+	public synchronized TextDocumentInfo createWorkingCopy(String contents, String languageId) throws Exception {
 		TextDocumentItem doc = new TextDocumentItem();
-		doc.setLanguageId(getLanguageId());
+		doc.setLanguageId(languageId);
 		doc.setText(contents);
 		doc.setUri(createTempUri());
 		doc.setVersion(getFirstVersion());
@@ -364,6 +386,10 @@ public class LanguageServerHarness {
 		Editor editor = newEditor(editorContents);
 		CompletionItem completion = editor.getFirstCompletion();
 		assertEquals(expected, completion.getLabel());
+	}
+
+	public List<? extends Location> getDefinitions(TextDocumentPositionParams params) throws Exception {
+		return server.getTextDocumentService().definition(params).get();
 	}
 
 }

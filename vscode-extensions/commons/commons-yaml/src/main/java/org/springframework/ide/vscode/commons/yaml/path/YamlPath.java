@@ -13,13 +13,16 @@ package org.springframework.ide.vscode.commons.yaml.path;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Stream;
 
 import org.springframework.ide.vscode.commons.yaml.ast.NodeRef;
-import org.springframework.ide.vscode.commons.yaml.ast.NodeUtil;
 import org.springframework.ide.vscode.commons.yaml.ast.NodeRef.RootRef;
 import org.springframework.ide.vscode.commons.yaml.ast.NodeRef.SeqRef;
 import org.springframework.ide.vscode.commons.yaml.ast.NodeRef.TupleValueRef;
+import org.springframework.ide.vscode.commons.yaml.ast.NodeUtil;
+import org.springframework.ide.vscode.commons.yaml.ast.YamlFileAST;
 import org.springframework.ide.vscode.commons.yaml.path.YamlPathSegment.YamlPathSegmentType;
+import org.yaml.snakeyaml.nodes.Node;
 
 /**
  * @author Kris De Volder
@@ -114,25 +117,58 @@ public class YamlPath {
 		return null;
 	}
 
+	public YamlPath prepend(YamlPathSegment s) {
+		YamlPathSegment[] newPath = new YamlPathSegment[segments.length+1];
+		newPath[0] = s;
+		System.arraycopy(segments, 0, newPath, 1, segments.length);
+		return new YamlPath(newPath);
+	}
+
 	public YamlPath append(YamlPathSegment s) {
 		YamlPathSegment[] newPath = Arrays.copyOf(segments, segments.length+1);
 		newPath[segments.length] = s;
 		return new YamlPath(newPath);
 	}
 
-	public <T extends YamlNavigable<T>> T traverse(T startNode) {
-		try {
-			T node = startNode;
-			for (YamlPathSegment s : segments) {
-				if (node==null) {
-					return null;
-				}
-				node = node.traverse(s);
-			}
-			return node;
-		} catch (Exception e) {
-			return null;
+	public Node traverseToNode(YamlFileAST root) {
+		ASTCursor cursor = traverse(new ASTRootCursor(root));
+		if (cursor instanceof NodeCursor) {
+			return ((NodeCursor)cursor).getNode();
 		}
+		return null;
+	}
+
+	public <T extends YamlNavigable<T>> T traverse(T startNode) {
+		return traverseAmbiguously(startNode).findFirst().orElse(null);
+	}
+
+	public Stream<Node> traverseAmbiguously(YamlFileAST ast) {
+		if (ast!=null) {
+			return traverseAmbiguously(new ASTRootCursor(ast))
+			.map((ASTCursor cursor) -> (Node)cursor.getNode());
+		}
+		return Stream.empty();
+	}
+
+	public Stream<Node> traverseAmbiguously(Node startNode) {
+		if (startNode!=null) {
+			return traverseAmbiguously(new NodeCursor(startNode))
+			.map((ASTCursor cursor) -> (Node)cursor.getNode());
+		}
+		return Stream.empty();
+	}
+
+	public <T extends YamlNavigable<T>> Stream<T> traverseAmbiguously(T startNode) {
+		if (startNode!=null) {
+			Stream<T> result = Stream.of(startNode);
+			for (YamlPathSegment s : segments) {
+				result = result.flatMap((node) -> {
+					return node.traverseAmbiguously(s);
+				});
+			}
+			return result;
+		}
+		return Stream.empty();
 	}
 
 	public YamlPath dropFirst(int dropCount) {

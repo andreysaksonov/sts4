@@ -29,20 +29,21 @@ public interface YTypeUtil {
 	boolean isSequencable(YType type);
 	boolean isBean(YType type);
 	YType getDomainType(YType type);
-	YValueHint[] getHintValues(YType yType);
+	YValueHint[] getHintValues(YType yType, DynamicSchemaContext dc) throws Exception;
 	String niceTypeName(YType type);
 	YType getKeyType(YType type);
-	ValueParser getValueParser(YType type);
+	ValueParser getValueParser(YType type, DynamicSchemaContext dc);
 
 	//TODO: only one of these two should be enough?
-	List<YTypedProperty> getProperties(YType type, DynamicSchemaContext dc);
-	Map<String, YTypedProperty> getPropertiesMap(YType yType, DynamicSchemaContext dc);
+	List<YTypedProperty> getProperties(YType type);
+	Map<String, YTypedProperty> getPropertiesMap(YType yType);
 
 	/**
 	 * Given a {@link DynamicSchemaContext} attempt to get a more specific type, as
 	 * may be inferred by stuff present in the context. If not enough information is
-	 * present in the context to narrow the type, then the type itself 
+	 * present in the context to narrow the type, then the type itself
 	 * should be returned.
 	 */
-	YType inferMoreSpecificType(YType type, DynamicSchemaContext schemaContext);
+	YType inferMoreSpecificType(YType type, DynamicSchemaContext dc);
+	List<String[]> getOneOfConstraints(YType type);
 }

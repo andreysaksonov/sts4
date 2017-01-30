@@ -1,14 +1,26 @@
+/*******************************************************************************
+ * Copyright (c) 2016-2017 Pivotal, Inc.
+ * All rights reserved. This program and the accompanying materials
+ * are made available under the terms of the Eclipse Public License v1.0
+ * which accompanies this distribution, and is available at
+ * http://www.eclipse.org/legal/epl-v10.html
+ *
+ * Contributors:
+ *     Pivotal, Inc. - initial API and implementation
+ *******************************************************************************/
+
 package org.springframework.ide.vscode.languageserver.testharness;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
-import static org.springframework.ide.vscode.languageserver.testharness.TestAsserts.assertContains;
+import static org.springframework.ide.vscode.languageserver.testharness.TestAsserts.*;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -19,13 +31,16 @@ import org.eclipse.lsp4j.CompletionItem;
 import org.eclipse.lsp4j.CompletionList;
 import org.eclipse.lsp4j.Diagnostic;
 import org.eclipse.lsp4j.Hover;
+import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.PublishDiagnosticsParams;
 import org.eclipse.lsp4j.Range;
+import org.eclipse.lsp4j.TextDocumentIdentifier;
+import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.eclipse.lsp4j.TextEdit;
 import org.junit.Assert;
 
-import com.google.common.base.Strings;
+import reactor.core.publisher.Flux;
 
 public class Editor {
 
@@ -78,11 +93,13 @@ public class Editor {
 
 	private int selectionStart;
 	private Set<String> ignoredTypes;
+	private String languageId;
 
-	public Editor(LanguageServerHarness harness, String contents) throws Exception {
+	public Editor(LanguageServerHarness harness, String contents, String languageId) throws Exception {
 		this.harness = harness;
+		this.languageId = languageId;
 		EditorState state = new EditorState(contents);
-		this.document = harness.openDocument(harness.createWorkingCopy(state.documentContents));
+		this.document = harness.openDocument(harness.createWorkingCopy(state.documentContents, languageId));
 		this.selectionStart = state.selectionStart;
 		this.selectionEnd = state.selectionEnd;
 		this.ignoredTypes = new HashSet<>();
@@ -233,15 +250,52 @@ public class Editor {
 		assertEquals(expect.toString(), actual.toString());
 	}
 
+	public void assertContainsCompletions(String... expectTextAfter) throws Exception {
+		StringBuilder actual = new StringBuilder();
+
+		for (CompletionItem completion : getCompletions()) {
+			Editor editor = this.clone();
+			editor.apply(completion);
+			actual.append(editor.getText());
+			actual.append("\n-------------------\n");
+		}
+		String actualText = actual.toString();
+
+		for (String after : expectTextAfter) {
+			assertContains(after, actualText);
+		}
+	}
+
+	public void assertDoesNotContainCompletions(String... notToBeFound) throws Exception {
+		StringBuilder actual = new StringBuilder();
+
+		for (CompletionItem completion : getCompletions()) {
+			Editor editor = this.clone();
+			editor.apply(completion);
+			actual.append(editor.getText());
+			actual.append("\n-------------------\n");
+		}
+		String actualText = actual.toString();
+
+		for (String after : notToBeFound) {
+			assertDoesNotContain(after, actualText);
+		}
+	}
+
 	public void apply(CompletionItem completion) throws Exception {
 		TextEdit edit = completion.getTextEdit();
 		String docText = document.getText();
 		if (edit!=null) {
 			String replaceWith = edit.getNewText();
 			//Apply indentfix, this is magic vscode seems to apply to edits returned by language server. So our harness has to
-			// mimick that behavior. I'm not sure this fix is really emulating it faithfully as its undocumented :-(
-			int indentFix = edit.getRange().getStart().getCharacter();
-			replaceWith = replaceWith.replaceAll("\\n", "\n"+Strings.repeat(" ", indentFix));
+			// mimick that behavior. See https://github.com/Microsoft/language-server-protocol/issues/83
+			int referenceLine = edit.getRange().getStart().getLine();
+			int cursorOffset = edit.getRange().getStart().getCharacter();
+			String referenceIndent = document.getLineIndentString(referenceLine);
+			if (cursorOffset<referenceIndent.length()) {
+				referenceIndent = referenceIndent.substring(0, cursorOffset);
+			}
+			replaceWith = replaceWith.replaceAll("\\n", "\n"+referenceIndent);
 
 			int cursorReplaceOffset = replaceWith.indexOf(VS_CODE_CURSOR_MARKER);
 			if (cursorReplaceOffset>=0) {
@@ -277,7 +331,7 @@ public class Editor {
 	@Override
 	public Editor clone() {
 		try {
-			return new Editor(harness, getText());
+			return new Editor(harness, getText(), getLanguageId());
 		} catch (Exception e) {
 			throw new RuntimeException(e);
 		}
@@ -313,15 +367,48 @@ public class Editor {
 	}
 
 	public void assertIsHoverRegion(String string) throws Exception {
-		int hoverPosition = getRawText().indexOf(string) + string.length() / 2;
+		int hoverPosition = getHoverPosition(string, 1);
 		Hover hover = harness.getHover(document, document.toPosition(hoverPosition));
 		assertEquals(string, getText(hover.getRange()));
 	}
 
-	public void assertHoverContains(String hoverOver, String snippet) throws Exception {
-		int hoverPosition = getRawText().indexOf(hoverOver) + hoverOver.length() / 2;
+	public void assertHoverContains(String hoverOver, int occurrence, String snippet) throws Exception {
+		int hoverPosition = getHoverPosition(hoverOver, occurrence);
 		Hover hover = harness.getHover(document, document.toPosition(hoverPosition));
-		assertContains(snippet, hover.getContents().toString());	}
+		assertContains(snippet, hover.getContents().toString());
+	}
+
+	private int getHoverPosition(String hoverOver, int occurrence) throws Exception {
+		assertTrue(occurrence>0);
+		return occurrences(getRawText(), hoverOver)
+				.elementAt(occurrence-1)
+				.map(offset -> offset + hoverOver.length()/2)
+				.block();
+	}
+
+	private Flux<Integer> occurrences(String text, String substring) {
+		return Flux.fromIterable(() -> new Iterator<Integer>() {
+			int searchFrom = 0;
+			@Override
+			public boolean hasNext() {
+				return searchFrom>=0 && searchFrom < text.length() && text.indexOf(substring, searchFrom) >= 0;
+			}
+
+			@Override
+			public Integer next() {
+				int found = text.indexOf(substring, searchFrom);
+				assertTrue(found>=0);
+				searchFrom = found+1;
+				return found;
+			}
+		});
+	}
+
+	public void assertHoverContains(String hoverOver, String snippet) throws Exception {
+		int hoverPosition = getHoverPosition(hoverOver,1);
+		Hover hover = harness.getHover(document, document.toPosition(hoverPosition));
+		assertContains(snippet, hover.getContents().toString());
+	}
 
 	public void assertNoHover(String hoverOver) throws Exception {
 		int hoverPosition = getRawText().indexOf(hoverOver) + hoverOver.length() / 2;
@@ -357,7 +444,7 @@ public class Editor {
 		assertEquals(expectedHover, hover.getContents().toString());
 	}
 
-	public void assertCompletionDetails(String expectLabel, String expectDetail, String expectDocSnippet) throws Exception {
+	public CompletionItem assertCompletionDetails(String expectLabel, String expectDetail, String expectDocSnippet) throws Exception {
 		CompletionItem it = harness.resolveCompletionItem(assertCompletionWithLabel(expectLabel));
 		if (expectDetail!=null) {
 			assertEquals(expectDetail, it.getDetail());
@@ -365,6 +452,7 @@ public class Editor {
 		if (expectDocSnippet!=null) {
 			assertContains(expectDocSnippet, it.getDocumentation());
 		}
+		return it;
 	}
 
 	protected CompletionItem assertCompletionWithLabel(String expectLabel) throws Exception {
@@ -430,6 +518,49 @@ public class Editor {
 
 	public void ignoreProblem(Object type) {
 		ignoredTypes.add(type.toString());
+	}
+
+	public void assertGotoDefinition(Position pos, Range expectedTarget) throws Exception {
+		TextDocumentIdentifier textDocumentId = document.getId();
+		TextDocumentPositionParams params = new TextDocumentPositionParams(textDocumentId, textDocumentId.getUri(), pos);
+		List<? extends Location> defs = harness.getDefinitions(params);
+		assertEquals(1, defs.size());
+		assertEquals(new Location(textDocumentId.getUri(), expectedTarget), defs.get(0));
+	}
+
+	/**
+	 * Determines the position of (the middle of) a snippet of text in the document.
+	 *
+	 * @param contextSnippet A larger snippet containing the actual snippet to look for.
+	 *                   This larger snippet is used to narrow the section of the document
+	 *                   where we look for the actual snippet. This is useful when the snippet
+	 *                   occurs multiple times in the document.
+	 * @param focusSnippet The snippet to look for
+	 */
+	public Position positionOf(String longSnippet, String focusSnippet) throws Exception {
+		Range r = rangeOf(longSnippet, focusSnippet);
+		return r==null?null:r.getStart();
+	}
+
+	/**
+	 * Determines the range of a snippet of text in the document.
+	 *
+	 * @param contextSnippet A larger snippet containing the actual snippet to look for.
+	 *                   This larger snippet is used to narrow the section of the document
+	 *                   where we look for the actual snippet. This is useful when the snippet
+	 *                   occurs multiple times in the document.
+	 * @param focusSnippet The snippet to look for
+	 */
+	public Range rangeOf(String longSnippet, String focusSnippet) throws Exception {
+		int relativeOffset = longSnippet.indexOf(focusSnippet);
+		int contextStart = getRawText().indexOf(longSnippet);
+		Assert.assertTrue("'"+longSnippet+"' not found in editor", contextStart>=0);
+		int start = contextStart+relativeOffset;
+		return new Range(document.toPosition(start), document.toPosition(start+focusSnippet.length()));
+	}
+
+	public String getLanguageId() {
+		return languageId;
 	}
 
 }

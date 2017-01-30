@@ -25,7 +25,7 @@ public class AlwaysFailingParser implements ValueParser {
 	}
 
 	@Override
-	public Object parse(String str) {
+	public Object parse(String str) throws Exception {
 		throw new IllegalArgumentException("'"+str+"' is not valid for type '"+typeName+"'");
 	}
 
