@@ -57,5 +57,37 @@
             class="org.springframework.tooling.boot.java.ls.PrefsInitializer">
       </initializer>
    </extension>
+   <extension
+         point="org.eclipse.ui.handlers">
+      <handler
+            class="org.springframework.tooling.boot.java.ls.jdt.OpenFullyQualifiedNameInEditor"
+            commandId="org.springframework.tooling.boot.java.ls.OpenJavaType">
+      </handler>
+      <handler
+            class="org.springframework.tooling.boot.java.ls.jdt.OpenResourceInEditor"
+            commandId="org.springframework.tooling.boot.java.ls.OpenResourceInEditor">
+      </handler>
+   </extension>
+   <extension
+         point="org.eclipse.ui.commands">
+      <command
+            id="org.springframework.tooling.boot.java.ls.OpenJavaType"
+            name="Open Java Type in Editor">
+         <commandParameter
+               id="fqName"
+               name="fqName"
+               optional="false">
+         </commandParameter>
+      </command>
+      <command
+            id="org.springframework.tooling.boot.java.ls.OpenResourceInEditor"
+            name="Open File in Editor">
+         <commandParameter
+               id="path"
+               name="path"
+               optional="false">
+         </commandParameter>
+      </command>
+   </extension>
 
 </plugin>
